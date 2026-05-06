@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: leasetrack-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leasetrack_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-leasetrack_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-postgres-password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: leasetrack-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-leasetrack_app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-local-dev-rabbitmq-password}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leasetrack-backend
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      APP_DB_HOST: postgres
+      APP_DB_PORT: 5432
+      APP_DB_NAME: ${POSTGRES_DB:-leasetrack_dev}
+      APP_DB_USERNAME: ${POSTGRES_USER:-leasetrack_app}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-postgres-password}
+      APP_RABBITMQ_HOST: rabbitmq
+      APP_RABBITMQ_PORT: 5672
+      APP_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-leasetrack_app}
+      APP_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-local-dev-rabbitmq-password}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-local-dev-jwt-secret-change-before-use}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  postgres-data:
