@@ -1,6 +1,17 @@
 spring:
   application:
     name: lease-track
+  datasource:
+    url: jdbc:postgresql://${APP_DB_HOST:localhost}:${APP_DB_PORT:5432}/${APP_DB_NAME:leasetrack_dev}
+    username: ${APP_DB_USERNAME:leasetrack_app}
+    password: ${APP_DB_PASSWORD:local-dev-postgres-password}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 server:
   port: ${APP_PORT:8080}
