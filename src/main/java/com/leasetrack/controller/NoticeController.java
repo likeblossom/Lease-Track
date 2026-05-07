@@ -6,13 +6,16 @@ import com.leasetrack.domain.enums.NoticeType;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
+import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
+import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
 import com.leasetrack.service.NoticeService;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -82,5 +85,15 @@ public class NoticeController {
             @PathVariable UUID attemptId,
             @Valid @RequestBody UpsertDeliveryEvidenceRequest request) {
         return noticeService.upsertDeliveryEvidence(noticeId, attemptId, request);
+    }
+
+    @GetMapping("/{noticeId}/audit-log")
+    public List<AuditEventResponse> getAuditLog(@PathVariable UUID noticeId) {
+        return noticeService.getAuditLog(noticeId);
+    }
+
+    @GetMapping("/{noticeId}/evidence-package")
+    public EvidencePackageResponse getEvidencePackage(@PathVariable UUID noticeId) {
+        return noticeService.getEvidencePackage(noticeId);
     }
 }

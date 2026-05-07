@@ -1,7 +1,10 @@
 package com.leasetrack.mapper;
 
+import com.leasetrack.domain.entity.AuditEvent;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.enums.EvidenceStrength;
+import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.dto.response.DeliveryAttemptResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
@@ -53,7 +56,7 @@ public class NoticeMapper {
                 attempt.getUpdatedAt());
     }
 
-    public DeliveryEvidenceResponse toResponse(DeliveryEvidence evidence) {
+    public DeliveryEvidenceResponse toResponse(DeliveryEvidence evidence, EvidenceStrength evidenceStrength) {
         return new DeliveryEvidenceResponse(
                 evidence.getId(),
                 evidence.getDeliveryAttempt().getId(),
@@ -66,7 +69,20 @@ public class NoticeMapper {
                 evidence.getEmailAcknowledgementRef(),
                 evidence.getEmailAcknowledgementMetadata(),
                 evidence.getBailiffAffidavitRef(),
+                evidenceStrength,
                 evidence.getCreatedAt(),
                 evidence.getUpdatedAt());
+    }
+
+    public AuditEventResponse toResponse(AuditEvent auditEvent) {
+        return new AuditEventResponse(
+                auditEvent.getId(),
+                auditEvent.getNoticeId(),
+                auditEvent.getDeliveryAttemptId(),
+                auditEvent.getEventType(),
+                auditEvent.getActorRole(),
+                auditEvent.getActorReference(),
+                auditEvent.getDetails(),
+                auditEvent.getCreatedAt());
     }
 }

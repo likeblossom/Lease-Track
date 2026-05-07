@@ -3,6 +3,8 @@ package com.leasetrack.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.leasetrack.domain.entity.DeliveryAttempt;
@@ -10,14 +12,17 @@ import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
+import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.event.publisher.NoticeEventPublisher;
 import com.leasetrack.exception.InvalidStatusTransitionException;
 import com.leasetrack.mapper.NoticeMapper;
 import com.leasetrack.repository.DeliveryAttemptRepository;
@@ -53,6 +58,13 @@ class NoticeServiceTest {
     private DeliveryEvidenceRepository deliveryEvidenceRepository;
 
     private final NoticeMapper noticeMapper = new NoticeMapper();
+    private final EvidenceStrengthService evidenceStrengthService = new EvidenceStrengthService();
+    @Mock
+    private AuditService auditService;
+
+    @Mock
+    private NoticeEventPublisher noticeEventPublisher;
+
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
     private NoticeService noticeService;
 
@@ -62,6 +74,9 @@ class NoticeServiceTest {
                 noticeRepository,
                 deliveryAttemptRepository,
                 deliveryEvidenceRepository,
+                evidenceStrengthService,
+                auditService,
+                noticeEventPublisher,
                 noticeMapper,
                 clock);
     }
@@ -93,6 +108,8 @@ class NoticeServiceTest {
         assertThat(response.deliveryAttempts().getFirst().deliveryMethod()).isEqualTo(DeliveryMethod.REGISTERED_MAIL);
         assertThat(response.deliveryAttempts().getFirst().status()).isEqualTo(DeliveryAttemptStatus.PENDING);
         assertThat(response.deliveryAttempts().getFirst().deadlineAt()).isEqualTo(deadlineAt);
+        verify(auditService).recordNoticeCreated(any(Notice.class));
+        verify(noticeEventPublisher).publishNoticeCreated(any(Notice.class));
     }
 
     @Test
@@ -141,6 +158,14 @@ class NoticeServiceTest {
         assertThat(response.deliveryAttempts().getFirst().status()).isEqualTo(DeliveryAttemptStatus.SENT);
         assertThat(response.deliveryAttempts().getFirst().sentAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.deliveryAttempts().getFirst().updatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
+        verify(auditService).recordDeliveryStatusUpdated(
+                attempt,
+                DeliveryAttemptStatus.PENDING,
+                DeliveryAttemptStatus.SENT);
+        verify(noticeEventPublisher).publishDeliveryStatusUpdated(
+                attempt,
+                DeliveryAttemptStatus.PENDING,
+                DeliveryAttemptStatus.SENT);
     }
 
     @Test
@@ -190,8 +215,43 @@ class NoticeServiceTest {
         assertThat(response.trackingNumber()).isEqualTo("RN123456789CA");
         assertThat(response.carrierName()).isEqualTo("Canada Post");
         assertThat(response.deliveryConfirmation()).isTrue();
+        assertThat(response.evidenceStrength()).isNotNull();
         assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.updatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
+        verify(auditService).recordEvidenceUpserted(
+                any(DeliveryEvidence.class),
+                eq(response.evidenceStrength()),
+                eq(true));
+        verify(noticeEventPublisher).publishEvidenceUploaded(
+                any(DeliveryEvidence.class),
+                eq(response.evidenceStrength()));
+    }
+
+    @Test
+    void getEvidencePackageReturnsNoticeEvidenceAuditAndStrongestStrength() {
+        Notice notice = noticeWithAttempt(DeliveryAttemptStatus.DELIVERED);
+        DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
+        DeliveryEvidence evidence = new DeliveryEvidence();
+        evidence.setId(UUID.randomUUID());
+        evidence.setDeliveryAttempt(attempt);
+        evidence.setTrackingNumber("RN123456789CA");
+        evidence.setDeliveryConfirmation(true);
+        evidence.setCreatedAt(Instant.parse("2026-05-06T12:00:00Z"));
+        evidence.setUpdatedAt(Instant.parse("2026-05-06T12:00:00Z"));
+
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
+        when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())).thenReturn(Optional.of(evidence));
+        when(auditService.getAuditEvents(notice.getId())).thenReturn(List.of());
+
+        EvidencePackageResponse response = noticeService.getEvidencePackage(notice.getId());
+
+        assertThat(response.noticeId()).isEqualTo(notice.getId());
+        assertThat(response.generatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
+        assertThat(response.notice().id()).isEqualTo(notice.getId());
+        assertThat(response.evidence()).hasSize(1);
+        assertThat(response.evidence().getFirst().evidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
+        assertThat(response.strongestEvidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
+        verify(auditService).recordEvidencePackageGenerated(notice.getId());
     }
 
     private Specification<Notice> anySpecification() {

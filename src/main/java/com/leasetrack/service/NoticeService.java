@@ -5,14 +5,18 @@ import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
+import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
+import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.event.publisher.NoticeEventPublisher;
 import com.leasetrack.exception.DeliveryAttemptNotFoundException;
 import com.leasetrack.exception.InvalidStatusTransitionException;
 import com.leasetrack.exception.NoticeNotFoundException;
@@ -24,6 +28,8 @@ import com.leasetrack.repository.specification.NoticeSpecifications;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,6 +43,9 @@ public class NoticeService {
     private final NoticeRepository noticeRepository;
     private final DeliveryAttemptRepository deliveryAttemptRepository;
     private final DeliveryEvidenceRepository deliveryEvidenceRepository;
+    private final EvidenceStrengthService evidenceStrengthService;
+    private final AuditService auditService;
+    private final NoticeEventPublisher noticeEventPublisher;
     private final NoticeMapper noticeMapper;
     private final Clock clock;
 
@@ -44,11 +53,17 @@ public class NoticeService {
             NoticeRepository noticeRepository,
             DeliveryAttemptRepository deliveryAttemptRepository,
             DeliveryEvidenceRepository deliveryEvidenceRepository,
+            EvidenceStrengthService evidenceStrengthService,
+            AuditService auditService,
+            NoticeEventPublisher noticeEventPublisher,
             NoticeMapper noticeMapper,
             Clock clock) {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
         this.deliveryEvidenceRepository = deliveryEvidenceRepository;
+        this.evidenceStrengthService = evidenceStrengthService;
+        this.auditService = auditService;
+        this.noticeEventPublisher = noticeEventPublisher;
         this.noticeMapper = noticeMapper;
         this.clock = clock;
     }
@@ -80,7 +95,10 @@ public class NoticeService {
         attempt.setUpdatedAt(now);
         notice.getDeliveryAttempts().add(attempt);
 
-        return noticeMapper.toResponse(noticeRepository.save(notice));
+        Notice savedNotice = noticeRepository.save(notice);
+        auditService.recordNoticeCreated(savedNotice);
+        noticeEventPublisher.publishNoticeCreated(savedNotice);
+        return noticeMapper.toResponse(savedNotice);
     }
 
     @Transactional(readOnly = true)
@@ -117,8 +135,9 @@ public class NoticeService {
         DeliveryAttempt attempt = deliveryAttemptRepository.findByIdAndNotice_Id(deliveryAttemptId, noticeId)
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
 
+        DeliveryAttemptStatus previousStatus = attempt.getStatus();
         DeliveryAttemptStatus targetStatus = request.status();
-        validateTransition(attempt.getStatus(), targetStatus);
+        validateTransition(previousStatus, targetStatus);
 
         Instant now = Instant.now(clock);
         attempt.setStatus(targetStatus);
@@ -131,6 +150,8 @@ public class NoticeService {
             attempt.setDeliveredAt(now);
         }
 
+        auditService.recordDeliveryStatusUpdated(attempt, previousStatus, targetStatus);
+        noticeEventPublisher.publishDeliveryStatusUpdated(attempt, previousStatus, targetStatus);
         return noticeMapper.toResponse(attempt.getNotice());
     }
 
@@ -143,7 +164,9 @@ public class NoticeService {
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
 
         Instant now = Instant.now(clock);
-        DeliveryEvidence evidence = deliveryEvidenceRepository.findByDeliveryAttempt_Id(deliveryAttemptId)
+        Optional<DeliveryEvidence> existingEvidence = deliveryEvidenceRepository.findByDeliveryAttempt_Id(deliveryAttemptId);
+        boolean created = existingEvidence.isEmpty();
+        DeliveryEvidence evidence = existingEvidence
                 .orElseGet(() -> {
                     DeliveryEvidence newEvidence = new DeliveryEvidence();
                     newEvidence.setId(UUID.randomUUID());
@@ -164,7 +187,65 @@ public class NoticeService {
         evidence.setUpdatedAt(now);
         attempt.setEvidence(evidence);
 
-        return noticeMapper.toResponse(deliveryEvidenceRepository.save(evidence));
+        DeliveryEvidence savedEvidence = deliveryEvidenceRepository.save(evidence);
+        var evidenceStrength = evidenceStrengthService.classify(attempt, savedEvidence);
+        auditService.recordEvidenceUpserted(savedEvidence, evidenceStrength, created);
+        noticeEventPublisher.publishEvidenceUploaded(savedEvidence, evidenceStrength);
+        return noticeMapper.toResponse(savedEvidence, evidenceStrength);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuditEventResponse> getAuditLog(UUID noticeId) {
+        if (!noticeRepository.existsById(noticeId)) {
+            throw new NoticeNotFoundException(noticeId);
+        }
+        return auditService.getAuditEvents(noticeId).stream()
+                .map(noticeMapper::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public EvidencePackageResponse getEvidencePackage(UUID noticeId) {
+        Notice notice = noticeRepository.findById(noticeId)
+                .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+
+        List<DeliveryEvidenceResponse> evidence = notice.getDeliveryAttempts().stream()
+                .map(attempt -> deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())
+                        .map(deliveryEvidence -> noticeMapper.toResponse(
+                                deliveryEvidence,
+                                evidenceStrengthService.classify(attempt, deliveryEvidence))))
+                .flatMap(Optional::stream)
+                .toList();
+
+        EvidenceStrength strongestEvidenceStrength = evidence.stream()
+                .map(DeliveryEvidenceResponse::evidenceStrength)
+                .reduce(EvidenceStrength.WEAK, this::stronger);
+
+        auditService.recordEvidencePackageGenerated(noticeId);
+
+        List<AuditEventResponse> auditEvents = auditService.getAuditEvents(noticeId).stream()
+                .map(noticeMapper::toResponse)
+                .toList();
+
+        return new EvidencePackageResponse(
+                noticeId,
+                Instant.now(clock),
+                noticeMapper.toResponse(notice),
+                evidence,
+                auditEvents,
+                strongestEvidenceStrength);
+    }
+
+    private EvidenceStrength stronger(EvidenceStrength first, EvidenceStrength second) {
+        return strengthRank(first) >= strengthRank(second) ? first : second;
+    }
+
+    private int strengthRank(EvidenceStrength evidenceStrength) {
+        return switch (evidenceStrength) {
+            case WEAK -> 1;
+            case MEDIUM -> 2;
+            case STRONG -> 3;
+        };
     }
 
     private void validateTransition(DeliveryAttemptStatus currentStatus, DeliveryAttemptStatus targetStatus) {
