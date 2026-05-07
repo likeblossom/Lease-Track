@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
@@ -50,6 +51,9 @@ public class DeliveryAttempt {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @OneToOne(mappedBy = "deliveryAttempt")
+    private DeliveryEvidence evidence;
 
     public UUID getId() {
         return id;
@@ -129,5 +133,13 @@ public class DeliveryAttempt {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public DeliveryEvidence getEvidence() {
+        return evidence;
+    }
+
+    public void setEvidence(DeliveryEvidence evidence) {
+        this.evidence = evidence;
     }
 }

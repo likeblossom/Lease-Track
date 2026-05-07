@@ -1,9 +1,12 @@
 package com.leasetrack.mapper;
 
 import com.leasetrack.domain.entity.DeliveryAttempt;
+import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.dto.response.DeliveryAttemptResponse;
+import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.NoticeResponse;
+import com.leasetrack.dto.response.NoticeSummaryResponse;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -27,6 +30,16 @@ public class NoticeMapper {
                         .toList());
     }
 
+    public NoticeSummaryResponse toSummaryResponse(Notice notice) {
+        return new NoticeSummaryResponse(
+                notice.getId(),
+                notice.getRecipientName(),
+                notice.getNoticeType(),
+                notice.getStatus(),
+                notice.getCreatedAt(),
+                notice.getUpdatedAt());
+    }
+
     private DeliveryAttemptResponse toResponse(DeliveryAttempt attempt) {
         return new DeliveryAttemptResponse(
                 attempt.getId(),
@@ -38,5 +51,22 @@ public class NoticeMapper {
                 attempt.getDeadlineAt(),
                 attempt.getCreatedAt(),
                 attempt.getUpdatedAt());
+    }
+
+    public DeliveryEvidenceResponse toResponse(DeliveryEvidence evidence) {
+        return new DeliveryEvidenceResponse(
+                evidence.getId(),
+                evidence.getDeliveryAttempt().getId(),
+                evidence.getTrackingNumber(),
+                evidence.getCarrierName(),
+                evidence.getCarrierReceiptRef(),
+                evidence.getDeliveryConfirmation(),
+                evidence.getDeliveryConfirmationMetadata(),
+                evidence.getSignedAcknowledgementRef(),
+                evidence.getEmailAcknowledgementRef(),
+                evidence.getEmailAcknowledgementMetadata(),
+                evidence.getBailiffAffidavitRef(),
+                evidence.getCreatedAt(),
+                evidence.getUpdatedAt());
     }
 }
