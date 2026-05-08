@@ -33,7 +33,9 @@ class NoticeWorkflowIntegrationTest {
 
     @Container
     static final RabbitMQContainer RABBITMQ = new RabbitMQContainer(
-            DockerImageName.parse("rabbitmq:3.13-management-alpine"));
+            DockerImageName.parse("rabbitmq:3.13-management-alpine"))
+            .withAdminUser("leasetrack_test")
+            .withAdminPassword("leasetrack_test_password");
 
     @LocalServerPort
     private int port;
