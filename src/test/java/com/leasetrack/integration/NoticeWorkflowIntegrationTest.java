@@ -67,8 +67,17 @@ class NoticeWorkflowIntegrationTest {
 
     @Test
     void createNoticeAddEvidenceAndGenerateEvidencePackage() {
-        String landlordToken = login("landlord@leasetrack.dev");
-        String adminToken = login("admin@leasetrack.dev");
+        register("admin@leasetrack.test", "Admin User", "ADMIN");
+        register("landlord@leasetrack.test", "Landlord User", "LANDLORD");
+        String adminToken = login("admin@leasetrack.test");
+        String landlordToken = login("landlord@leasetrack.test");
+        UUID tenantUserId = acceptInvitation(
+                createInvitation(adminToken, "tenant@leasetrack.test", "Tenant User", "TENANT"),
+                "Tenant User");
+        String otherTenantToken = loginAcceptedTenant(
+                adminToken,
+                "other-tenant@leasetrack.test",
+                "Other Tenant");
 
         ResponseEntity<JsonNode> createNoticeResponse = restTemplate.exchange(
                 url("/api/notices"),
@@ -78,6 +87,7 @@ class NoticeWorkflowIntegrationTest {
                         "recipientContactInfo", "marie@example.com",
                         "noticeType", "RENT_INCREASE",
                         "deliveryMethod", "REGISTERED_MAIL",
+                        "tenantUserId", tenantUserId.toString(),
                         "deadlineAt", "2026-06-01T12:00:00Z",
                         "notes", "Integration test notice"), authHeaders(landlordToken)),
                 JsonNode.class);
@@ -87,6 +97,24 @@ class NoticeWorkflowIntegrationTest {
         assertThat(notice).isNotNull();
         UUID noticeId = UUID.fromString(notice.get("id").asText());
         UUID attemptId = UUID.fromString(notice.get("deliveryAttempts").get(0).get("id").asText());
+
+        ResponseEntity<JsonNode> tenantNoticeResponse = restTemplate.exchange(
+                url("/api/notices/%s".formatted(noticeId)),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(login("tenant@leasetrack.test"))),
+                JsonNode.class);
+
+        assertThat(tenantNoticeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(tenantNoticeResponse.getBody()).isNotNull();
+        assertThat(tenantNoticeResponse.getBody().get("id").asText()).isEqualTo(noticeId.toString());
+
+        ResponseEntity<JsonNode> otherTenantNoticeResponse = restTemplate.exchange(
+                url("/api/notices/%s".formatted(noticeId)),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(otherTenantToken)),
+                JsonNode.class);
+
+        assertThat(otherTenantNoticeResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
         ResponseEntity<JsonNode> evidenceResponse = restTemplate.exchange(
                 url("/api/notices/%s/attempts/%s/evidence".formatted(noticeId, attemptId)),
@@ -126,6 +154,55 @@ class NoticeWorkflowIntegrationTest {
         assertThat(packageResponse.getBody().get("strongestEvidenceStrength").asText()).isEqualTo("STRONG");
         assertThat(packageResponse.getBody().get("evidenceDocuments").size()).isEqualTo(1);
         assertThat(packageResponse.getBody().get("auditEvents").size()).isGreaterThanOrEqualTo(3);
+    }
+
+    private void register(String email, String displayName, String role) {
+        ResponseEntity<JsonNode> registerResponse = restTemplate.exchange(
+                url("/api/auth/register"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "email", email,
+                        "password", "password",
+                        "displayName", displayName,
+                        "role", role), jsonHeaders()),
+                JsonNode.class);
+
+        assertThat(registerResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    private String createInvitation(String inviterToken, String email, String displayName, String role) {
+        ResponseEntity<JsonNode> invitationResponse = restTemplate.exchange(
+                url("/api/auth/invitations"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "email", email,
+                        "displayName", displayName,
+                        "role", role), authHeaders(inviterToken)),
+                JsonNode.class);
+
+        assertThat(invitationResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(invitationResponse.getBody()).isNotNull();
+        return invitationResponse.getBody().get("token").asText();
+    }
+
+    private UUID acceptInvitation(String token, String displayName) {
+        ResponseEntity<JsonNode> acceptResponse = restTemplate.exchange(
+                url("/api/auth/invitations/accept"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "token", token,
+                        "password", "password",
+                        "displayName", displayName), jsonHeaders()),
+                JsonNode.class);
+
+        assertThat(acceptResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(acceptResponse.getBody()).isNotNull();
+        return UUID.fromString(acceptResponse.getBody().get("id").asText());
+    }
+
+    private String loginAcceptedTenant(String adminToken, String email, String displayName) {
+        acceptInvitation(createInvitation(adminToken, email, displayName, "TENANT"), displayName);
+        return login(email);
     }
 
     private String login(String email) {

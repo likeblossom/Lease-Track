@@ -28,6 +28,7 @@ import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
+import com.leasetrack.repository.UserRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
 import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
@@ -55,6 +56,7 @@ public class NoticeService {
     private final NoticeEventPublisher noticeEventPublisher;
     private final NoticeMapper noticeMapper;
     private final CurrentUserService currentUserService;
+    private final UserRepository userRepository;
     private final Clock clock;
 
     public NoticeService(
@@ -67,6 +69,7 @@ public class NoticeService {
             NoticeEventPublisher noticeEventPublisher,
             NoticeMapper noticeMapper,
             CurrentUserService currentUserService,
+            UserRepository userRepository,
             Clock clock) {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
@@ -77,6 +80,7 @@ public class NoticeService {
         this.noticeEventPublisher = noticeEventPublisher;
         this.noticeMapper = noticeMapper;
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
         this.clock = clock;
     }
 
@@ -93,7 +97,7 @@ public class NoticeService {
         notice.setNoticeType(request.noticeType());
         notice.setStatus(NoticeStatus.OPEN);
         notice.setOwnerUserId(currentUser.getId());
-        notice.setTenantUserId(request.tenantUserId());
+        notice.setTenantUserId(validatedTenantUserId(request.tenantUserId()));
         notice.setNotes(request.notes());
         notice.setCreatedAt(now);
         notice.setUpdatedAt(now);
@@ -287,6 +291,18 @@ public class NoticeService {
         if (user.getRole() == UserRole.TENANT) {
             throw new AccessDeniedException("Tenant users cannot create notices");
         }
+    }
+
+    private UUID validatedTenantUserId(UUID tenantUserId) {
+        if (tenantUserId == null) {
+            return null;
+        }
+        User tenant = userRepository.findById(tenantUserId)
+                .orElseThrow(() -> new AccessDeniedException("Assigned tenant user does not exist"));
+        if (tenant.getRole() != UserRole.TENANT || !tenant.isEnabled()) {
+            throw new AccessDeniedException("Notices can only be assigned to enabled tenant users");
+        }
+        return tenant.getId();
     }
 
     private void assertCanRead(User user, Notice notice) {

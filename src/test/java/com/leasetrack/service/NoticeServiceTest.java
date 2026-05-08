@@ -32,6 +32,7 @@ import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
+import com.leasetrack.repository.UserRepository;
 import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
 import java.time.Instant;
@@ -78,6 +79,9 @@ class NoticeServiceTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    @Mock
+    private UserRepository userRepository;
+
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
     private final UUID landlordUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private NoticeService noticeService;
@@ -95,6 +99,7 @@ class NoticeServiceTest {
                 noticeEventPublisher,
                 noticeMapper,
                 currentUserService,
+                userRepository,
                 clock);
     }
 
@@ -103,6 +108,7 @@ class NoticeServiceTest {
         UUID tenantUserId = UUID.randomUUID();
         Instant deadlineAt = Instant.parse("2026-06-01T12:00:00Z");
 
+        when(userRepository.findById(tenantUserId)).thenReturn(Optional.of(user(tenantUserId, UserRole.TENANT)));
         when(noticeRepository.save(any(Notice.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         NoticeResponse response = noticeService.createNotice(new CreateNoticeRequest(
@@ -125,6 +131,23 @@ class NoticeServiceTest {
         assertThat(response.deliveryAttempts().getFirst().deadlineAt()).isEqualTo(deadlineAt);
         verify(auditService).recordNoticeCreated(any(Notice.class));
         verify(noticeEventPublisher).publishNoticeCreated(any(Notice.class));
+    }
+
+    @Test
+    void createNoticeRejectsTenantAssignmentToNonTenantUser() {
+        UUID managerUserId = UUID.randomUUID();
+        when(userRepository.findById(managerUserId)).thenReturn(Optional.of(user(managerUserId, UserRole.PROPERTY_MANAGER)));
+
+        assertThatThrownBy(() -> noticeService.createNotice(new CreateNoticeRequest(
+                "Marie Tremblay",
+                "marie@example.com",
+                NoticeType.RENT_INCREASE,
+                DeliveryMethod.REGISTERED_MAIL,
+                managerUserId,
+                Instant.parse("2026-06-01T12:00:00Z"),
+                "Initial notice")))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("enabled tenant users");
     }
 
     @Test
@@ -217,6 +240,35 @@ class NoticeServiceTest {
                 new UpdateDeliveryAttemptStatusRequest(DeliveryAttemptStatus.SENT)))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("cannot manage");
+    }
+
+    @Test
+    void tenantCanReadAssignedNotice() {
+        Notice notice = noticeWithAttempt(DeliveryAttemptStatus.PENDING);
+        UUID tenantUserId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        notice.setTenantUserId(tenantUserId);
+
+        when(currentUserService.currentUser()).thenReturn(user(tenantUserId, UserRole.TENANT));
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
+
+        NoticeResponse response = noticeService.getNotice(notice.getId());
+
+        assertThat(response.id()).isEqualTo(notice.getId());
+        assertThat(response.tenantUserId()).isEqualTo(tenantUserId);
+    }
+
+    @Test
+    void tenantCannotReadUnassignedNotice() {
+        Notice notice = noticeWithAttempt(DeliveryAttemptStatus.PENDING);
+        notice.setTenantUserId(UUID.fromString("33333333-3333-3333-3333-333333333333"));
+        UUID otherTenantUserId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+
+        when(currentUserService.currentUser()).thenReturn(user(otherTenantUserId, UserRole.TENANT));
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
+
+        assertThatThrownBy(() -> noticeService.getNotice(notice.getId()))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("cannot access");
     }
 
     @Test

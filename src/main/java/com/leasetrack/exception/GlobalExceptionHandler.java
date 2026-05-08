@@ -41,6 +41,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(InvalidInvitationException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidInvitation(
+            InvalidInvitationException ex,
+            HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(UserRegistrationException.class)
+    public ResponseEntity<ApiErrorResponse> handleUserRegistration(
+            UserRegistrationException ex,
+            HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(FileStorageException.class)
     public ResponseEntity<ApiErrorResponse> handleFileStorage(
             FileStorageException ex,

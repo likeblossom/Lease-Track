@@ -2,6 +2,7 @@ package com.leasetrack.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -31,14 +32,20 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/invitations/accept")
+                        .permitAll()
                         .requestMatchers(
-                                "/api/auth/**",
                                 "/api/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
                         .permitAll()
                         .requestMatchers("/api/notices/**")
+                        .authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/invitations")
                         .authenticated()
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
