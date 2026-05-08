@@ -41,6 +41,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -224,7 +225,7 @@ class NoticeServiceTest {
         when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId()))
                 .thenReturn(Optional.empty());
         when(deliveryEvidenceRepository.save(any(DeliveryEvidence.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> managedCopy(invocation.getArgument(0)));
 
         DeliveryEvidenceResponse response = noticeService.upsertDeliveryEvidence(
                 notice.getId(),
@@ -248,6 +249,11 @@ class NoticeServiceTest {
         assertThat(response.evidenceStrength()).isNotNull();
         assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.updatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
+        ArgumentCaptor<DeliveryEvidence> savedEvidenceCaptor = ArgumentCaptor.forClass(DeliveryEvidence.class);
+        verify(deliveryEvidenceRepository).save(savedEvidenceCaptor.capture());
+        assertThat(attempt.getEvidence()).isNotNull();
+        assertThat(attempt.getEvidence()).isNotSameAs(savedEvidenceCaptor.getValue());
+        assertThat(attempt.getEvidence().getId()).isEqualTo(savedEvidenceCaptor.getValue().getId());
         verify(auditService).recordEvidenceUpserted(
                 any(DeliveryEvidence.class),
                 eq(response.evidenceStrength()),
@@ -286,6 +292,24 @@ class NoticeServiceTest {
 
     private Specification<Notice> anySpecification() {
         return org.mockito.ArgumentMatchers.<Specification<Notice>>any();
+    }
+
+    private DeliveryEvidence managedCopy(DeliveryEvidence evidence) {
+        DeliveryEvidence managedEvidence = new DeliveryEvidence();
+        managedEvidence.setId(evidence.getId());
+        managedEvidence.setDeliveryAttempt(evidence.getDeliveryAttempt());
+        managedEvidence.setTrackingNumber(evidence.getTrackingNumber());
+        managedEvidence.setCarrierName(evidence.getCarrierName());
+        managedEvidence.setCarrierReceiptRef(evidence.getCarrierReceiptRef());
+        managedEvidence.setDeliveryConfirmation(evidence.getDeliveryConfirmation());
+        managedEvidence.setDeliveryConfirmationMetadata(evidence.getDeliveryConfirmationMetadata());
+        managedEvidence.setSignedAcknowledgementRef(evidence.getSignedAcknowledgementRef());
+        managedEvidence.setEmailAcknowledgementRef(evidence.getEmailAcknowledgementRef());
+        managedEvidence.setEmailAcknowledgementMetadata(evidence.getEmailAcknowledgementMetadata());
+        managedEvidence.setBailiffAffidavitRef(evidence.getBailiffAffidavitRef());
+        managedEvidence.setCreatedAt(evidence.getCreatedAt());
+        managedEvidence.setUpdatedAt(evidence.getUpdatedAt());
+        return managedEvidence;
     }
 
     private Notice noticeWithAttempt(DeliveryAttemptStatus attemptStatus) {

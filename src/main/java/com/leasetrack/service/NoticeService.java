@@ -204,9 +204,9 @@ public class NoticeService {
         evidence.setEmailAcknowledgementMetadata(request.emailAcknowledgementMetadata());
         evidence.setBailiffAffidavitRef(request.bailiffAffidavitRef());
         evidence.setUpdatedAt(now);
-        attempt.setEvidence(evidence);
 
         DeliveryEvidence savedEvidence = deliveryEvidenceRepository.save(evidence);
+        savedEvidence.getDeliveryAttempt().setEvidence(savedEvidence);
         var evidenceStrength = evidenceStrengthService.classify(attempt, savedEvidence);
         auditService.recordEvidenceUpserted(savedEvidence, evidenceStrength, created);
         noticeEventPublisher.publishEvidenceUploaded(savedEvidence, evidenceStrength);
