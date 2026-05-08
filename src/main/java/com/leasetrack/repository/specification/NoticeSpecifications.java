@@ -5,9 +5,11 @@ import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.DeliveryMethod;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
+import com.leasetrack.domain.enums.UserRole;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
 public final class NoticeSpecifications {
@@ -63,6 +65,14 @@ public final class NoticeSpecifications {
             }
             Join<Notice, DeliveryAttempt> attempts = root.join("deliveryAttempts", JoinType.INNER);
             return criteriaBuilder.lessThanOrEqualTo(attempts.get("deadlineAt"), deadlineBefore);
+        };
+    }
+
+    public static Specification<Notice> accessibleTo(UUID userId, UserRole role) {
+        return (root, query, criteriaBuilder) -> switch (role) {
+            case ADMIN -> criteriaBuilder.conjunction();
+            case TENANT -> criteriaBuilder.equal(root.get("tenantUserId"), userId);
+            case LANDLORD, PROPERTY_MANAGER -> criteriaBuilder.equal(root.get("ownerUserId"), userId);
         };
     }
 }

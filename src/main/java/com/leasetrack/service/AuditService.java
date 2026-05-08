@@ -64,6 +64,14 @@ public class AuditService {
                 "{\"format\":\"JSON\"}");
     }
 
+    public void recordDeadlineApproachingPublished(DeliveryAttempt attempt) {
+        record(
+                attempt.getNotice().getId(),
+                attempt.getId(),
+                AuditEventType.DEADLINE_APPROACHING_PUBLISHED,
+                "{\"deadlineAt\":\"%s\"}".formatted(attempt.getDeadlineAt()));
+    }
+
     public List<AuditEvent> getAuditEvents(UUID noticeId) {
         return auditEventRepository.findByNoticeIdOrderByCreatedAtAsc(noticeId);
     }

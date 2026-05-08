@@ -12,6 +12,24 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  rabbitmq:
+    host: ${APP_RABBITMQ_HOST:localhost}
+    port: ${APP_RABBITMQ_PORT:5672}
+    username: ${APP_RABBITMQ_USERNAME:guest}
+    password: ${APP_RABBITMQ_PASSWORD:guest}
 
 server:
   port: ${APP_PORT:8080}
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:local-dev-jwt-secret-change-before-use-32-bytes-min}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:3600}
+  schedulers:
+    deadline:
+      fixed-delay-ms: ${APP_DEADLINE_SCHEDULER_DELAY_MS:3600000}
+      reminder-window-hours: ${APP_DEADLINE_REMINDER_WINDOW_HOURS:72}
+    tracking:
+      fixed-delay-ms: ${APP_TRACKING_SCHEDULER_DELAY_MS:3600000}
+  tracking:
+    provider: ${APP_TRACKING_PROVIDER:mock}

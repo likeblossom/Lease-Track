@@ -2,6 +2,7 @@ package com.leasetrack.domain.entity;
 
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.TrackingSyncStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,6 +46,16 @@ public class DeliveryAttempt {
 
     @Column(name = "deadline_at")
     private Instant deadlineAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tracking_sync_status")
+    private TrackingSyncStatus trackingSyncStatus;
+
+    @Column(name = "last_tracking_checked_at")
+    private Instant lastTrackingCheckedAt;
+
+    @Column(name = "deadline_reminder_sent", nullable = false)
+    private boolean deadlineReminderSent;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -117,6 +128,30 @@ public class DeliveryAttempt {
 
     public void setDeadlineAt(Instant deadlineAt) {
         this.deadlineAt = deadlineAt;
+    }
+
+    public TrackingSyncStatus getTrackingSyncStatus() {
+        return trackingSyncStatus;
+    }
+
+    public void setTrackingSyncStatus(TrackingSyncStatus trackingSyncStatus) {
+        this.trackingSyncStatus = trackingSyncStatus;
+    }
+
+    public Instant getLastTrackingCheckedAt() {
+        return lastTrackingCheckedAt;
+    }
+
+    public void setLastTrackingCheckedAt(Instant lastTrackingCheckedAt) {
+        this.lastTrackingCheckedAt = lastTrackingCheckedAt;
+    }
+
+    public boolean isDeadlineReminderSent() {
+        return deadlineReminderSent;
+    }
+
+    public void setDeadlineReminderSent(boolean deadlineReminderSent) {
+        this.deadlineReminderSent = deadlineReminderSent;
     }
 
     public Instant getCreatedAt() {

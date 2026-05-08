@@ -16,6 +16,9 @@ public record DeliveryEvidenceResponse(
         String emailAcknowledgementRef,
         String emailAcknowledgementMetadata,
         String bailiffAffidavitRef,
+        String latestTrackingStatus,
+        String latestTrackingStatusCode,
+        Instant latestTrackingEventAt,
         EvidenceStrength evidenceStrength,
         Instant createdAt,
         Instant updatedAt) {

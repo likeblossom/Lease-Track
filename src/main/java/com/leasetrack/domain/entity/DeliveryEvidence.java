@@ -48,6 +48,15 @@ public class DeliveryEvidence {
     @Column(name = "bailiff_affidavit_ref")
     private String bailiffAffidavitRef;
 
+    @Column(name = "latest_tracking_status")
+    private String latestTrackingStatus;
+
+    @Column(name = "latest_tracking_status_code")
+    private String latestTrackingStatusCode;
+
+    @Column(name = "latest_tracking_event_at")
+    private Instant latestTrackingEventAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -140,6 +149,30 @@ public class DeliveryEvidence {
 
     public void setBailiffAffidavitRef(String bailiffAffidavitRef) {
         this.bailiffAffidavitRef = bailiffAffidavitRef;
+    }
+
+    public String getLatestTrackingStatus() {
+        return latestTrackingStatus;
+    }
+
+    public void setLatestTrackingStatus(String latestTrackingStatus) {
+        this.latestTrackingStatus = latestTrackingStatus;
+    }
+
+    public String getLatestTrackingStatusCode() {
+        return latestTrackingStatusCode;
+    }
+
+    public void setLatestTrackingStatusCode(String latestTrackingStatusCode) {
+        this.latestTrackingStatusCode = latestTrackingStatusCode;
+    }
+
+    public Instant getLatestTrackingEventAt() {
+        return latestTrackingEventAt;
+    }
+
+    public void setLatestTrackingEventAt(Instant latestTrackingEventAt) {
+        this.latestTrackingEventAt = latestTrackingEventAt;
     }
 
     public Instant getCreatedAt() {

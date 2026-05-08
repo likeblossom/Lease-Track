@@ -4,17 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.Notice;
+import com.leasetrack.domain.entity.User;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
 import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
+import com.leasetrack.domain.enums.UserRole;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
@@ -28,6 +31,7 @@ import com.leasetrack.mapper.NoticeMapper;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.NoticeRepository;
+import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -44,6 +48,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.Mock;
+import org.springframework.security.access.AccessDeniedException;
 
 @ExtendWith(MockitoExtension.class)
 class NoticeServiceTest {
@@ -65,11 +70,16 @@ class NoticeServiceTest {
     @Mock
     private NoticeEventPublisher noticeEventPublisher;
 
+    @Mock
+    private CurrentUserService currentUserService;
+
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
+    private final UUID landlordUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private NoticeService noticeService;
 
     @BeforeEach
     void setUp() {
+        lenient().when(currentUserService.currentUser()).thenReturn(user(landlordUserId, UserRole.LANDLORD));
         noticeService = new NoticeService(
                 noticeRepository,
                 deliveryAttemptRepository,
@@ -78,12 +88,12 @@ class NoticeServiceTest {
                 auditService,
                 noticeEventPublisher,
                 noticeMapper,
+                currentUserService,
                 clock);
     }
 
     @Test
     void createNoticeCreatesOpenNoticeWithInitialPendingDeliveryAttempt() {
-        UUID ownerUserId = UUID.randomUUID();
         UUID tenantUserId = UUID.randomUUID();
         Instant deadlineAt = Instant.parse("2026-06-01T12:00:00Z");
 
@@ -94,14 +104,13 @@ class NoticeServiceTest {
                 "marie@example.com",
                 NoticeType.RENT_INCREASE,
                 DeliveryMethod.REGISTERED_MAIL,
-                ownerUserId,
                 tenantUserId,
                 deadlineAt,
                 "Initial notice"));
 
         assertThat(response.id()).isNotNull();
         assertThat(response.status()).isEqualTo(NoticeStatus.OPEN);
-        assertThat(response.ownerUserId()).isEqualTo(ownerUserId);
+        assertThat(response.ownerUserId()).isEqualTo(landlordUserId);
         assertThat(response.tenantUserId()).isEqualTo(tenantUserId);
         assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.deliveryAttempts()).hasSize(1);
@@ -185,6 +194,25 @@ class NoticeServiceTest {
     }
 
     @Test
+    void tenantCannotManageNoticeEvenWhenAssignedToNotice() {
+        Notice notice = noticeWithAttempt(DeliveryAttemptStatus.PENDING);
+        UUID tenantUserId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        notice.setTenantUserId(tenantUserId);
+        DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
+
+        when(currentUserService.currentUser()).thenReturn(user(tenantUserId, UserRole.TENANT));
+        when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
+                .thenReturn(Optional.of(attempt));
+
+        assertThatThrownBy(() -> noticeService.updateDeliveryAttemptStatus(
+                notice.getId(),
+                attempt.getId(),
+                new UpdateDeliveryAttemptStatusRequest(DeliveryAttemptStatus.SENT)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("cannot manage");
+    }
+
+    @Test
     void upsertDeliveryEvidenceCreatesEvidenceForAttempt() {
         Notice notice = noticeWithAttempt(DeliveryAttemptStatus.SENT);
         DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
@@ -265,7 +293,7 @@ class NoticeServiceTest {
         notice.setRecipientContactInfo("marie@example.com");
         notice.setNoticeType(NoticeType.RENT_INCREASE);
         notice.setStatus(NoticeStatus.OPEN);
-        notice.setOwnerUserId(UUID.randomUUID());
+        notice.setOwnerUserId(landlordUserId);
         notice.setCreatedAt(Instant.parse("2026-05-01T12:00:00Z"));
         notice.setUpdatedAt(Instant.parse("2026-05-01T12:00:00Z"));
 
@@ -279,5 +307,17 @@ class NoticeServiceTest {
         attempt.setUpdatedAt(Instant.parse("2026-05-01T12:00:00Z"));
         notice.getDeliveryAttempts().add(attempt);
         return notice;
+    }
+
+    private User user(UUID id, UserRole role) {
+        User user = new User();
+        user.setId(id);
+        user.setEmail(role.name().toLowerCase() + "@leasetrack.dev");
+        user.setPasswordHash("password");
+        user.setDisplayName(role.name());
+        user.setRole(role);
+        user.setEnabled(true);
+        user.setCreatedAt(Instant.parse("2026-05-01T12:00:00Z"));
+        return user;
     }
 }

@@ -3,11 +3,13 @@ package com.leasetrack.service;
 import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.Notice;
+import com.leasetrack.domain.entity.User;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
 import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
+import com.leasetrack.domain.enums.UserRole;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
@@ -25,12 +27,14 @@ import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
+import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -47,6 +51,7 @@ public class NoticeService {
     private final AuditService auditService;
     private final NoticeEventPublisher noticeEventPublisher;
     private final NoticeMapper noticeMapper;
+    private final CurrentUserService currentUserService;
     private final Clock clock;
 
     public NoticeService(
@@ -57,6 +62,7 @@ public class NoticeService {
             AuditService auditService,
             NoticeEventPublisher noticeEventPublisher,
             NoticeMapper noticeMapper,
+            CurrentUserService currentUserService,
             Clock clock) {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
@@ -65,11 +71,14 @@ public class NoticeService {
         this.auditService = auditService;
         this.noticeEventPublisher = noticeEventPublisher;
         this.noticeMapper = noticeMapper;
+        this.currentUserService = currentUserService;
         this.clock = clock;
     }
 
     @Transactional
     public NoticeResponse createNotice(CreateNoticeRequest request) {
+        User currentUser = currentUserService.currentUser();
+        assertCanCreateNotice(currentUser);
         Instant now = Instant.now(clock);
 
         Notice notice = new Notice();
@@ -78,7 +87,7 @@ public class NoticeService {
         notice.setRecipientContactInfo(request.recipientContactInfo());
         notice.setNoticeType(request.noticeType());
         notice.setStatus(NoticeStatus.OPEN);
-        notice.setOwnerUserId(request.ownerUserId());
+        notice.setOwnerUserId(currentUser.getId());
         notice.setTenantUserId(request.tenantUserId());
         notice.setNotes(request.notes());
         notice.setCreatedAt(now);
@@ -105,6 +114,7 @@ public class NoticeService {
     public NoticeResponse getNotice(UUID noticeId) {
         Notice notice = noticeRepository.findById(noticeId)
                 .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+        assertCanRead(currentUserService.currentUser(), notice);
         return noticeMapper.toResponse(notice);
     }
 
@@ -121,7 +131,8 @@ public class NoticeService {
                 NoticeSpecifications.hasNoticeType(noticeType),
                 NoticeSpecifications.hasDeliveryMethod(deliveryMethod),
                 NoticeSpecifications.hasDeadlineOnOrAfter(deadlineAfter),
-                NoticeSpecifications.hasDeadlineOnOrBefore(deadlineBefore));
+                NoticeSpecifications.hasDeadlineOnOrBefore(deadlineBefore),
+                accessibleNoticeSpecification(currentUserService.currentUser()));
 
         return noticeRepository.findAll(specification, pageable)
                 .map(noticeMapper::toSummaryResponse);
@@ -134,6 +145,7 @@ public class NoticeService {
             UpdateDeliveryAttemptStatusRequest request) {
         DeliveryAttempt attempt = deliveryAttemptRepository.findByIdAndNotice_Id(deliveryAttemptId, noticeId)
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
+        assertCanManage(currentUserService.currentUser(), attempt.getNotice());
 
         DeliveryAttemptStatus previousStatus = attempt.getStatus();
         DeliveryAttemptStatus targetStatus = request.status();
@@ -162,6 +174,7 @@ public class NoticeService {
             UpsertDeliveryEvidenceRequest request) {
         DeliveryAttempt attempt = deliveryAttemptRepository.findByIdAndNotice_Id(deliveryAttemptId, noticeId)
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
+        assertCanManage(currentUserService.currentUser(), attempt.getNotice());
 
         Instant now = Instant.now(clock);
         Optional<DeliveryEvidence> existingEvidence = deliveryEvidenceRepository.findByDeliveryAttempt_Id(deliveryAttemptId);
@@ -196,9 +209,9 @@ public class NoticeService {
 
     @Transactional(readOnly = true)
     public List<AuditEventResponse> getAuditLog(UUID noticeId) {
-        if (!noticeRepository.existsById(noticeId)) {
-            throw new NoticeNotFoundException(noticeId);
-        }
+        Notice notice = noticeRepository.findById(noticeId)
+                .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+        assertCanRead(currentUserService.currentUser(), notice);
         return auditService.getAuditEvents(noticeId).stream()
                 .map(noticeMapper::toResponse)
                 .toList();
@@ -208,6 +221,7 @@ public class NoticeService {
     public EvidencePackageResponse getEvidencePackage(UUID noticeId) {
         Notice notice = noticeRepository.findById(noticeId)
                 .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+        assertCanRead(currentUserService.currentUser(), notice);
 
         List<DeliveryEvidenceResponse> evidence = notice.getDeliveryAttempts().stream()
                 .map(attempt -> deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())
@@ -246,6 +260,36 @@ public class NoticeService {
             case MEDIUM -> 2;
             case STRONG -> 3;
         };
+    }
+
+    private Specification<Notice> accessibleNoticeSpecification(User currentUser) {
+        return NoticeSpecifications.accessibleTo(currentUser.getId(), currentUser.getRole());
+    }
+
+    private void assertCanCreateNotice(User user) {
+        if (user.getRole() == UserRole.TENANT) {
+            throw new AccessDeniedException("Tenant users cannot create notices");
+        }
+    }
+
+    private void assertCanRead(User user, Notice notice) {
+        if (user.getRole() == UserRole.ADMIN
+                || user.getId().equals(notice.getOwnerUserId())
+                || user.getId().equals(notice.getTenantUserId())) {
+            return;
+        }
+        throw new AccessDeniedException("User cannot access this notice");
+    }
+
+    private void assertCanManage(User user, Notice notice) {
+        if (user.getRole() == UserRole.ADMIN) {
+            return;
+        }
+        if ((user.getRole() == UserRole.LANDLORD || user.getRole() == UserRole.PROPERTY_MANAGER)
+                && user.getId().equals(notice.getOwnerUserId())) {
+            return;
+        }
+        throw new AccessDeniedException("User cannot manage this notice");
     }
 
     private void validateTransition(DeliveryAttemptStatus currentStatus, DeliveryAttemptStatus targetStatus) {

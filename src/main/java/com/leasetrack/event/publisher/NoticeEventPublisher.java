@@ -72,6 +72,20 @@ public class NoticeEventPublisher {
                         "evidenceStrength", evidenceStrength.name())));
     }
 
+    public void publishDeadlineApproaching(DeliveryAttempt attempt) {
+        publish(new NoticeEvent(
+                UUID.randomUUID(),
+                "DeadlineApproaching",
+                EVENT_VERSION,
+                Instant.now(clock),
+                attempt.getNotice().getId(),
+                attempt.getId(),
+                Map.of(
+                        "deadlineAt", String.valueOf(attempt.getDeadlineAt()),
+                        "deliveryMethod", attempt.getDeliveryMethod().name(),
+                        "status", attempt.getStatus().name())));
+    }
+
     private void publish(NoticeEvent event) {
         rabbitTemplate.convertAndSend(
                 RabbitMqConfig.NOTICE_EVENTS_EXCHANGE,

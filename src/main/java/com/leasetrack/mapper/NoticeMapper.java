@@ -69,6 +69,9 @@ public class NoticeMapper {
                 evidence.getEmailAcknowledgementRef(),
                 evidence.getEmailAcknowledgementMetadata(),
                 evidence.getBailiffAffidavitRef(),
+                evidence.getLatestTrackingStatus(),
+                evidence.getLatestTrackingStatusCode(),
+                evidence.getLatestTrackingEventAt(),
                 evidenceStrength,
                 evidence.getCreatedAt(),
                 evidence.getUpdatedAt());
