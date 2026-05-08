@@ -156,6 +156,7 @@ class NoticeServiceTest {
         Notice notice = noticeWithAttempt(DeliveryAttemptStatus.PENDING);
         DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
 
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
         when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
                 .thenReturn(Optional.of(attempt));
 
@@ -182,6 +183,7 @@ class NoticeServiceTest {
         Notice notice = noticeWithAttempt(DeliveryAttemptStatus.DELIVERED);
         DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
 
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
         when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
                 .thenReturn(Optional.of(attempt));
 
@@ -201,8 +203,7 @@ class NoticeServiceTest {
         DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
 
         when(currentUserService.currentUser()).thenReturn(user(tenantUserId, UserRole.TENANT));
-        when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
-                .thenReturn(Optional.of(attempt));
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
 
         assertThatThrownBy(() -> noticeService.updateDeliveryAttemptStatus(
                 notice.getId(),
@@ -217,6 +218,7 @@ class NoticeServiceTest {
         Notice notice = noticeWithAttempt(DeliveryAttemptStatus.SENT);
         DeliveryAttempt attempt = notice.getDeliveryAttempts().getFirst();
 
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
         when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
                 .thenReturn(Optional.of(attempt));
         when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId()))

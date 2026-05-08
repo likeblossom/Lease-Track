@@ -143,9 +143,12 @@ public class NoticeService {
             UUID noticeId,
             UUID deliveryAttemptId,
             UpdateDeliveryAttemptStatusRequest request) {
+        Notice notice = noticeRepository.findById(noticeId)
+                .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+        assertCanManage(currentUserService.currentUser(), notice);
+
         DeliveryAttempt attempt = deliveryAttemptRepository.findByIdAndNotice_Id(deliveryAttemptId, noticeId)
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
-        assertCanManage(currentUserService.currentUser(), attempt.getNotice());
 
         DeliveryAttemptStatus previousStatus = attempt.getStatus();
         DeliveryAttemptStatus targetStatus = request.status();
@@ -172,9 +175,12 @@ public class NoticeService {
             UUID noticeId,
             UUID deliveryAttemptId,
             UpsertDeliveryEvidenceRequest request) {
+        Notice notice = noticeRepository.findById(noticeId)
+                .orElseThrow(() -> new NoticeNotFoundException(noticeId));
+        assertCanManage(currentUserService.currentUser(), notice);
+
         DeliveryAttempt attempt = deliveryAttemptRepository.findByIdAndNotice_Id(deliveryAttemptId, noticeId)
                 .orElseThrow(() -> new DeliveryAttemptNotFoundException(noticeId, deliveryAttemptId));
-        assertCanManage(currentUserService.currentUser(), attempt.getNotice());
 
         Instant now = Instant.now(clock);
         Optional<DeliveryEvidence> existingEvidence = deliveryEvidenceRepository.findByDeliveryAttempt_Id(deliveryAttemptId);

@@ -23,5 +23,10 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Verify Java toolchain
+        run: |
+          java -version
+          mvn -version
+
       - name: Run tests
-        run: mvn --batch-mode test
+        run: mvn --batch-mode --show-version test
