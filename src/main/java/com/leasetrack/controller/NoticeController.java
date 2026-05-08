@@ -12,6 +12,8 @@ import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
 import com.leasetrack.service.NoticeService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Instant;
@@ -35,6 +37,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 @RequestMapping("/api/notices")
+@Tag(name = "Notices")
 public class NoticeController {
 
     private final NoticeService noticeService;
@@ -44,6 +47,7 @@ public class NoticeController {
     }
 
     @PostMapping
+    @Operation(summary = "Create a notice with an initial delivery attempt")
     public ResponseEntity<NoticeResponse> createNotice(@Valid @RequestBody CreateNoticeRequest request) {
         NoticeResponse response = noticeService.createNotice(request);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
@@ -54,11 +58,13 @@ public class NoticeController {
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Retrieve a notice by id")
     public NoticeResponse getNotice(@PathVariable UUID id) {
         return noticeService.getNotice(id);
     }
 
     @GetMapping
+    @Operation(summary = "List notices visible to the authenticated user")
     public Page<NoticeSummaryResponse> listNotices(
             @RequestParam(required = false) NoticeStatus status,
             @RequestParam(required = false) NoticeType noticeType,
@@ -72,6 +78,7 @@ public class NoticeController {
     }
 
     @PatchMapping("/{noticeId}/attempts/{attemptId}/status")
+    @Operation(summary = "Update a delivery attempt status")
     public NoticeResponse updateDeliveryAttemptStatus(
             @PathVariable UUID noticeId,
             @PathVariable UUID attemptId,
@@ -80,6 +87,7 @@ public class NoticeController {
     }
 
     @PostMapping("/{noticeId}/attempts/{attemptId}/evidence")
+    @Operation(summary = "Create or update proof-of-delivery evidence")
     public DeliveryEvidenceResponse upsertDeliveryEvidence(
             @PathVariable UUID noticeId,
             @PathVariable UUID attemptId,
@@ -88,11 +96,13 @@ public class NoticeController {
     }
 
     @GetMapping("/{noticeId}/audit-log")
+    @Operation(summary = "Retrieve the audit log for a notice")
     public List<AuditEventResponse> getAuditLog(@PathVariable UUID noticeId) {
         return noticeService.getAuditLog(noticeId);
     }
 
     @GetMapping("/{noticeId}/evidence-package")
+    @Operation(summary = "Generate a JSON evidence package for a notice")
     public EvidencePackageResponse getEvidencePackage(@PathVariable UUID noticeId) {
         return noticeService.getEvidencePackage(noticeId);
     }
