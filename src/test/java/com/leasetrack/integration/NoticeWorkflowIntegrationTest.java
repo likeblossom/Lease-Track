@@ -58,7 +58,8 @@ class NoticeWorkflowIntegrationTest {
 
     @Test
     void createNoticeAddEvidenceAndGenerateEvidencePackage() {
-        String token = loginAsLandlord();
+        String landlordToken = login("landlord@leasetrack.dev");
+        String adminToken = login("admin@leasetrack.dev");
 
         ResponseEntity<JsonNode> createNoticeResponse = restTemplate.exchange(
                 url("/api/notices"),
@@ -69,7 +70,7 @@ class NoticeWorkflowIntegrationTest {
                         "noticeType", "RENT_INCREASE",
                         "deliveryMethod", "REGISTERED_MAIL",
                         "deadlineAt", "2026-06-01T12:00:00Z",
-                        "notes", "Integration test notice"), authHeaders(token)),
+                        "notes", "Integration test notice"), authHeaders(landlordToken)),
                 JsonNode.class);
 
         assertThat(createNoticeResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -86,7 +87,7 @@ class NoticeWorkflowIntegrationTest {
                         "carrierName", "Canada Post",
                         "carrierReceiptRef", "receipts/rn123456789ca.pdf",
                         "deliveryConfirmation", true,
-                        "deliveryConfirmationMetadata", "Delivered to recipient"), authHeaders(token)),
+                        "deliveryConfirmationMetadata", "Delivered to recipient"), authHeaders(adminToken)),
                 JsonNode.class);
 
         assertThat(evidenceResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -96,7 +97,7 @@ class NoticeWorkflowIntegrationTest {
         ResponseEntity<JsonNode> packageResponse = restTemplate.exchange(
                 url("/api/notices/%s/evidence-package".formatted(noticeId)),
                 HttpMethod.GET,
-                new HttpEntity<>(authHeaders(token)),
+                new HttpEntity<>(authHeaders(adminToken)),
                 JsonNode.class);
 
         assertThat(packageResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -106,13 +107,13 @@ class NoticeWorkflowIntegrationTest {
         assertThat(packageResponse.getBody().get("auditEvents").size()).isGreaterThanOrEqualTo(3);
     }
 
-    private String loginAsLandlord() {
+    private String login(String email) {
         HttpHeaders headers = jsonHeaders();
         ResponseEntity<JsonNode> loginResponse = restTemplate.exchange(
                 url("/api/auth/login"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
-                        "email", "landlord@leasetrack.dev",
+                        "email", email,
                         "password", "password"), headers),
                 JsonNode.class);
 
