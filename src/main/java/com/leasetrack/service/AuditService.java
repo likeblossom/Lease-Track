@@ -3,6 +3,7 @@ package com.leasetrack.service;
 import com.leasetrack.domain.entity.AuditEvent;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.EvidenceDocument;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.ActorRole;
 import com.leasetrack.domain.enums.AuditEventType;
@@ -54,6 +55,17 @@ public class AuditService {
                 evidence.getDeliveryAttempt().getId(),
                 created ? AuditEventType.EVIDENCE_ADDED : AuditEventType.EVIDENCE_UPDATED,
                 "{\"evidenceId\":\"%s\",\"evidenceStrength\":\"%s\"}".formatted(evidence.getId(), evidenceStrength));
+    }
+
+    public void recordEvidenceDocumentUploaded(EvidenceDocument document) {
+        record(
+                document.getNoticeId(),
+                document.getDeliveryAttempt().getId(),
+                AuditEventType.EVIDENCE_DOCUMENT_UPLOADED,
+                "{\"documentId\":\"%s\",\"documentType\":\"%s\",\"storageProvider\":\"%s\"}".formatted(
+                        document.getId(),
+                        document.getDocumentType(),
+                        document.getStorageProvider()));
     }
 
     public void recordEvidencePackageGenerated(UUID noticeId) {

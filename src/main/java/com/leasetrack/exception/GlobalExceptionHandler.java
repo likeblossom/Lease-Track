@@ -34,6 +34,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(InvalidEvidenceDocumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidEvidenceDocument(
+            InvalidEvidenceDocumentException ex,
+            HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(FileStorageException.class)
+    public ResponseEntity<ApiErrorResponse> handleFileStorage(
+            FileStorageException ex,
+            HttpServletRequest request) {
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(
             AccessDeniedException ex,

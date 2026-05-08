@@ -30,6 +30,7 @@ import com.leasetrack.exception.InvalidStatusTransitionException;
 import com.leasetrack.mapper.NoticeMapper;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
+import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
@@ -63,6 +64,9 @@ class NoticeServiceTest {
     @Mock
     private DeliveryEvidenceRepository deliveryEvidenceRepository;
 
+    @Mock
+    private EvidenceDocumentRepository evidenceDocumentRepository;
+
     private final NoticeMapper noticeMapper = new NoticeMapper();
     private final EvidenceStrengthService evidenceStrengthService = new EvidenceStrengthService();
     @Mock
@@ -85,6 +89,7 @@ class NoticeServiceTest {
                 noticeRepository,
                 deliveryAttemptRepository,
                 deliveryEvidenceRepository,
+                evidenceDocumentRepository,
                 evidenceStrengthService,
                 auditService,
                 noticeEventPublisher,
@@ -277,6 +282,7 @@ class NoticeServiceTest {
 
         when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
         when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())).thenReturn(Optional.of(evidence));
+        when(evidenceDocumentRepository.findByNoticeIdOrderByCreatedAtAsc(notice.getId())).thenReturn(List.of());
         when(auditService.getAuditEvents(notice.getId())).thenReturn(List.of());
 
         EvidencePackageResponse response = noticeService.getEvidencePackage(notice.getId());
@@ -285,6 +291,7 @@ class NoticeServiceTest {
         assertThat(response.generatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.notice().id()).isEqualTo(notice.getId());
         assertThat(response.evidence()).hasSize(1);
+        assertThat(response.evidenceDocuments()).isEmpty();
         assertThat(response.evidence().getFirst().evidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
         assertThat(response.strongestEvidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
         verify(auditService).recordEvidencePackageGenerated(notice.getId());

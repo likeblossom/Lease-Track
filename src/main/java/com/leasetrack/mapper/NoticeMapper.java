@@ -3,10 +3,12 @@ package com.leasetrack.mapper;
 import com.leasetrack.domain.entity.AuditEvent;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.EvidenceDocument;
 import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.dto.response.DeliveryAttemptResponse;
+import com.leasetrack.dto.response.EvidenceDocumentResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
@@ -87,5 +89,22 @@ public class NoticeMapper {
                 auditEvent.getActorReference(),
                 auditEvent.getDetails(),
                 auditEvent.getCreatedAt());
+    }
+
+    public EvidenceDocumentResponse toResponse(EvidenceDocument document) {
+        return new EvidenceDocumentResponse(
+                document.getId(),
+                document.getNoticeId(),
+                document.getDeliveryAttempt().getId(),
+                document.getDeliveryEvidence().getId(),
+                document.getDocumentType(),
+                document.getOriginalFilename(),
+                document.getContentType(),
+                document.getSizeBytes(),
+                document.getStorageProvider(),
+                document.getStorageKey(),
+                document.getSha256Checksum(),
+                document.getUploadedByUserId(),
+                document.getCreatedAt());
     }
 }

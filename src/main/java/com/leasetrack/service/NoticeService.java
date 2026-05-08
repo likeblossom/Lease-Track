@@ -15,6 +15,7 @@ import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
 import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
+import com.leasetrack.dto.response.EvidenceDocumentResponse;
 import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
@@ -25,6 +26,7 @@ import com.leasetrack.exception.NoticeNotFoundException;
 import com.leasetrack.mapper.NoticeMapper;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
+import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
 import com.leasetrack.security.CurrentUserService;
@@ -47,6 +49,7 @@ public class NoticeService {
     private final NoticeRepository noticeRepository;
     private final DeliveryAttemptRepository deliveryAttemptRepository;
     private final DeliveryEvidenceRepository deliveryEvidenceRepository;
+    private final EvidenceDocumentRepository evidenceDocumentRepository;
     private final EvidenceStrengthService evidenceStrengthService;
     private final AuditService auditService;
     private final NoticeEventPublisher noticeEventPublisher;
@@ -58,6 +61,7 @@ public class NoticeService {
             NoticeRepository noticeRepository,
             DeliveryAttemptRepository deliveryAttemptRepository,
             DeliveryEvidenceRepository deliveryEvidenceRepository,
+            EvidenceDocumentRepository evidenceDocumentRepository,
             EvidenceStrengthService evidenceStrengthService,
             AuditService auditService,
             NoticeEventPublisher noticeEventPublisher,
@@ -67,6 +71,7 @@ public class NoticeService {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
         this.deliveryEvidenceRepository = deliveryEvidenceRepository;
+        this.evidenceDocumentRepository = evidenceDocumentRepository;
         this.evidenceStrengthService = evidenceStrengthService;
         this.auditService = auditService;
         this.noticeEventPublisher = noticeEventPublisher;
@@ -241,6 +246,11 @@ public class NoticeService {
                 .map(DeliveryEvidenceResponse::evidenceStrength)
                 .reduce(EvidenceStrength.WEAK, this::stronger);
 
+        List<EvidenceDocumentResponse> evidenceDocuments = evidenceDocumentRepository
+                .findByNoticeIdOrderByCreatedAtAsc(noticeId).stream()
+                .map(noticeMapper::toResponse)
+                .toList();
+
         auditService.recordEvidencePackageGenerated(noticeId);
 
         List<AuditEventResponse> auditEvents = auditService.getAuditEvents(noticeId).stream()
@@ -252,6 +262,7 @@ public class NoticeService {
                 Instant.now(clock),
                 noticeMapper.toResponse(notice),
                 evidence,
+                evidenceDocuments,
                 auditEvents,
                 strongestEvidenceStrength);
     }

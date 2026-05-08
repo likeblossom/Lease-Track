@@ -1,16 +1,19 @@
 package com.leasetrack.controller;
 
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.EvidenceDocumentType;
 import com.leasetrack.domain.enums.NoticeStatus;
 import com.leasetrack.domain.enums.NoticeType;
 import com.leasetrack.dto.request.CreateNoticeRequest;
 import com.leasetrack.dto.request.UpdateDeliveryAttemptStatusRequest;
 import com.leasetrack.dto.request.UpsertDeliveryEvidenceRequest;
 import com.leasetrack.dto.response.AuditEventResponse;
+import com.leasetrack.dto.response.EvidenceDocumentResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.service.EvidenceDocumentService;
 import com.leasetrack.service.NoticeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,6 +27,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.SortDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
@@ -41,9 +46,11 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 public class NoticeController {
 
     private final NoticeService noticeService;
+    private final EvidenceDocumentService evidenceDocumentService;
 
-    public NoticeController(NoticeService noticeService) {
+    public NoticeController(NoticeService noticeService, EvidenceDocumentService evidenceDocumentService) {
         this.noticeService = noticeService;
+        this.evidenceDocumentService = evidenceDocumentService;
     }
 
     @PostMapping
@@ -93,6 +100,26 @@ public class NoticeController {
             @PathVariable UUID attemptId,
             @Valid @RequestBody UpsertDeliveryEvidenceRequest request) {
         return noticeService.upsertDeliveryEvidence(noticeId, attemptId, request);
+    }
+
+    @PostMapping(
+            value = "/{noticeId}/attempts/{attemptId}/evidence/documents",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload a proof-of-delivery evidence document")
+    public EvidenceDocumentResponse uploadEvidenceDocument(
+            @PathVariable UUID noticeId,
+            @PathVariable UUID attemptId,
+            @RequestParam EvidenceDocumentType documentType,
+            @RequestParam MultipartFile file) {
+        return evidenceDocumentService.uploadEvidenceDocument(noticeId, attemptId, documentType, file);
+    }
+
+    @GetMapping("/{noticeId}/attempts/{attemptId}/evidence/documents")
+    @Operation(summary = "List uploaded evidence document metadata for a delivery attempt")
+    public List<EvidenceDocumentResponse> listEvidenceDocuments(
+            @PathVariable UUID noticeId,
+            @PathVariable UUID attemptId) {
+        return evidenceDocumentService.listEvidenceDocuments(noticeId, attemptId);
     }
 
     @GetMapping("/{noticeId}/audit-log")

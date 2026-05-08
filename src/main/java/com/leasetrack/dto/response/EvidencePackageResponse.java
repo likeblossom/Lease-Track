@@ -10,6 +10,7 @@ public record EvidencePackageResponse(
         Instant generatedAt,
         NoticeResponse notice,
         List<DeliveryEvidenceResponse> evidence,
+        List<EvidenceDocumentResponse> evidenceDocuments,
         List<AuditEventResponse> auditEvents,
         EvidenceStrength strongestEvidenceStrength) {
 }

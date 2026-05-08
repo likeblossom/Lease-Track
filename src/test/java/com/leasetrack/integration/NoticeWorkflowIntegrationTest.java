@@ -9,12 +9,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -32,10 +35,7 @@ class NoticeWorkflowIntegrationTest {
             DockerImageName.parse("postgres:16-alpine"));
 
     @Container
-    static final RabbitMQContainer RABBITMQ = new RabbitMQContainer(
-            DockerImageName.parse("rabbitmq:3.13-management-alpine"))
-            .withAdminUser("leasetrack_test")
-            .withAdminPassword("leasetrack_test_password");
+    static final RabbitMQContainer RABBITMQ = rabbitMqContainer();
 
     @LocalServerPort
     private int port;
@@ -54,6 +54,15 @@ class NoticeWorkflowIntegrationTest {
         registry.add("app.jwt.secret", () -> "integration-test-jwt-secret-change-before-use-32-bytes-min");
         registry.add("app.schedulers.deadline.fixed-delay-ms", () -> "3600000");
         registry.add("app.schedulers.tracking.fixed-delay-ms", () -> "3600000");
+        registry.add("app.storage.local.root", () -> "target/test-evidence-documents");
+    }
+
+    private static RabbitMQContainer rabbitMqContainer() {
+        RabbitMQContainer container = new RabbitMQContainer(
+                DockerImageName.parse("rabbitmq:3.13-management-alpine"));
+        container.withAdminUser("leasetrack_test");
+        container.withAdminPassword("leasetrack_test_password");
+        return container;
     }
 
     @Test
@@ -94,6 +103,17 @@ class NoticeWorkflowIntegrationTest {
         assertThat(evidenceResponse.getBody()).isNotNull();
         assertThat(evidenceResponse.getBody().get("evidenceStrength").asText()).isEqualTo("STRONG");
 
+        ResponseEntity<JsonNode> documentResponse = restTemplate.exchange(
+                url("/api/notices/%s/attempts/%s/evidence/documents?documentType=CARRIER_RECEIPT"
+                        .formatted(noticeId, attemptId)),
+                HttpMethod.POST,
+                multipartEntity(adminToken, "carrier-receipt.pdf", "receipt".getBytes()),
+                JsonNode.class);
+
+        assertThat(documentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(documentResponse.getBody()).isNotNull();
+        assertThat(documentResponse.getBody().get("documentType").asText()).isEqualTo("CARRIER_RECEIPT");
+
         ResponseEntity<JsonNode> packageResponse = restTemplate.exchange(
                 url("/api/notices/%s/evidence-package".formatted(noticeId)),
                 HttpMethod.GET,
@@ -104,6 +124,7 @@ class NoticeWorkflowIntegrationTest {
         assertThat(packageResponse.getBody()).isNotNull();
         assertThat(packageResponse.getBody().get("noticeId").asText()).isEqualTo(noticeId.toString());
         assertThat(packageResponse.getBody().get("strongestEvidenceStrength").asText()).isEqualTo("STRONG");
+        assertThat(packageResponse.getBody().get("evidenceDocuments").size()).isEqualTo(1);
         assertThat(packageResponse.getBody().get("auditEvents").size()).isGreaterThanOrEqualTo(3);
     }
 
@@ -126,6 +147,26 @@ class NoticeWorkflowIntegrationTest {
         HttpHeaders headers = jsonHeaders();
         headers.setBearerAuth(token);
         return headers;
+    }
+
+    private HttpEntity<MultiValueMap<String, Object>> multipartEntity(
+            String token,
+            String filename,
+            byte[] content) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.setBearerAuth(token);
+
+        ByteArrayResource resource = new ByteArrayResource(content) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", resource);
+        return new HttpEntity<>(body, headers);
     }
 
     private HttpHeaders jsonHeaders() {

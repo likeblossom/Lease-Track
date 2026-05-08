@@ -33,3 +33,7 @@ app:
       fixed-delay-ms: ${APP_TRACKING_SCHEDULER_DELAY_MS:3600000}
   tracking:
     provider: ${APP_TRACKING_PROVIDER:mock}
+  storage:
+    provider: ${APP_STORAGE_PROVIDER:local}
+    local:
+      root: ${APP_LOCAL_STORAGE_ROOT:./data/evidence-documents}
