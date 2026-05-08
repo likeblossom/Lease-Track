@@ -29,4 +29,46 @@ jobs:
           mvn -version
 
       - name: Run tests
-        run: mvn --batch-mode --show-version test
+        run: mvn --batch-mode --show-version --errors -DtrimStackTrace=false test
+
+      - name: Print test failure reports
+        if: failure()
+        run: |
+          if [ -d target/surefire-reports ]; then
+            echo "::group::Surefire text reports"
+            find target/surefire-reports -type f \( -name '*.txt' -o -name '*.dumpstream' -o -name '*.dump' \) -print -exec sed -n '1,240p' {} \;
+            echo "::endgroup::"
+
+            echo "::group::Surefire XML reports"
+            find target/surefire-reports -type f -name 'TEST-*.xml' -print -exec sed -n '1,260p' {} \;
+            echo "::endgroup::"
+          else
+            echo "No target/surefire-reports directory was created."
+          fi
+
+      - name: Print Docker diagnostics
+        if: failure()
+        run: |
+          echo "::group::Docker containers"
+          docker ps -a || true
+          echo "::endgroup::"
+
+          echo "::group::Docker logs"
+          for container_id in $(docker ps -aq); do
+            container_name=$(docker inspect --format='{{.Name}}' "$container_id" 2>/dev/null | sed 's#^/##')
+            echo "===== ${container_name:-$container_id} ($container_id) ====="
+            docker logs --tail 300 "$container_id" 2>&1 || true
+          done
+          echo "::endgroup::"
+
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: |
+            target/surefire-reports/**
+            target/*.dump
+            target/*-jvmRun*.dump
+            target/*.dumpstream
+          if-no-files-found: ignore
