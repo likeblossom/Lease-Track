@@ -73,7 +73,7 @@ class NoticeWorkflowIntegrationTest {
                         "notes", "Integration test notice"), authHeaders(landlordToken)),
                 JsonNode.class);
 
-        assertThat(createNoticeResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertStatus(createNoticeResponse, HttpStatus.CREATED);
         JsonNode notice = createNoticeResponse.getBody();
         assertThat(notice).isNotNull();
         UUID noticeId = UUID.fromString(notice.get("id").asText());
@@ -90,7 +90,7 @@ class NoticeWorkflowIntegrationTest {
                         "deliveryConfirmationMetadata", "Delivered to recipient"), authHeaders(adminToken)),
                 JsonNode.class);
 
-        assertThat(evidenceResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertStatus(evidenceResponse, HttpStatus.OK);
         assertThat(evidenceResponse.getBody()).isNotNull();
         assertThat(evidenceResponse.getBody().get("evidenceStrength").asText()).isEqualTo("STRONG");
 
@@ -100,7 +100,7 @@ class NoticeWorkflowIntegrationTest {
                 new HttpEntity<>(authHeaders(adminToken)),
                 JsonNode.class);
 
-        assertThat(packageResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertStatus(packageResponse, HttpStatus.OK);
         assertThat(packageResponse.getBody()).isNotNull();
         assertThat(packageResponse.getBody().get("noticeId").asText()).isEqualTo(noticeId.toString());
         assertThat(packageResponse.getBody().get("strongestEvidenceStrength").asText()).isEqualTo("STRONG");
@@ -117,9 +117,15 @@ class NoticeWorkflowIntegrationTest {
                         "password", "password"), headers),
                 JsonNode.class);
 
-        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertStatus(loginResponse, HttpStatus.OK);
         assertThat(loginResponse.getBody()).isNotNull();
         return loginResponse.getBody().get("accessToken").asText();
+    }
+
+    private void assertStatus(ResponseEntity<JsonNode> response, HttpStatus expectedStatus) {
+        assertThat(response.getStatusCode())
+                .as("response body: %s", response.getBody())
+                .isEqualTo(expectedStatus);
     }
 
     private HttpHeaders authHeaders(String token) {
