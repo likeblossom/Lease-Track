@@ -39,6 +39,7 @@ import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.repository.UserRepository;
 import com.leasetrack.security.CurrentUserService;
+import com.leasetrack.tracking.TrackingProviderRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -115,6 +116,7 @@ class NoticeServiceTest {
                 currentUserService,
                 userRepository,
                 objectMapper,
+                new TrackingProviderRegistry(List.of()),
                 clock);
     }
 
@@ -305,6 +307,7 @@ class NoticeServiceTest {
                 new UpsertDeliveryEvidenceRequest(
                         "RN123456789CA",
                         "Canada Post",
+                        null,
                         "receipts/rn123.pdf",
                         true,
                         "Delivered to recipient",
@@ -317,6 +320,7 @@ class NoticeServiceTest {
         assertThat(response.deliveryAttemptId()).isEqualTo(attempt.getId());
         assertThat(response.trackingNumber()).isEqualTo("RN123456789CA");
         assertThat(response.carrierName()).isEqualTo("Canada Post");
+        assertThat(response.carrierCode()).isEqualTo("canada-post");
         assertThat(response.deliveryConfirmation()).isTrue();
         assertThat(response.evidenceStrength()).isNotNull();
         assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
@@ -401,6 +405,7 @@ class NoticeServiceTest {
         managedEvidence.setDeliveryAttempt(evidence.getDeliveryAttempt());
         managedEvidence.setTrackingNumber(evidence.getTrackingNumber());
         managedEvidence.setCarrierName(evidence.getCarrierName());
+        managedEvidence.setCarrierCode(evidence.getCarrierCode());
         managedEvidence.setCarrierReceiptRef(evidence.getCarrierReceiptRef());
         managedEvidence.setDeliveryConfirmation(evidence.getDeliveryConfirmation());
         managedEvidence.setDeliveryConfirmationMetadata(evidence.getDeliveryConfirmationMetadata());

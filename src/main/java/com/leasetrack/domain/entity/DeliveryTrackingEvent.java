@@ -24,6 +24,9 @@ public class DeliveryTrackingEvent {
     @Column(name = "tracking_number", nullable = false)
     private String trackingNumber;
 
+    @Column(name = "event_key")
+    private String eventKey;
+
     @Column(name = "status")
     private String status;
 
@@ -64,6 +67,14 @@ public class DeliveryTrackingEvent {
 
     public void setTrackingNumber(String trackingNumber) {
         this.trackingNumber = trackingNumber;
+    }
+
+    public String getEventKey() {
+        return eventKey;
+    }
+
+    public void setEventKey(String eventKey) {
+        this.eventKey = eventKey;
     }
 
     public String getStatus() {

@@ -33,6 +33,26 @@ app:
       fixed-delay-ms: ${APP_TRACKING_SCHEDULER_DELAY_MS:3600000}
   tracking:
     provider: ${APP_TRACKING_PROVIDER:mock}
+    connect-timeout: ${APP_TRACKING_CONNECT_TIMEOUT:PT5S}
+    read-timeout: ${APP_TRACKING_READ_TIMEOUT:PT15S}
+    canada-post:
+      enabled: ${APP_TRACKING_CANADA_POST_ENABLED:false}
+      base-url: ${APP_TRACKING_CANADA_POST_BASE_URL:https://ct.soa-gw.canadapost.ca}
+      username: ${APP_TRACKING_CANADA_POST_USERNAME:}
+      password: ${APP_TRACKING_CANADA_POST_PASSWORD:}
+    fedex:
+      enabled: ${APP_TRACKING_FEDEX_ENABLED:false}
+      auth-url: ${APP_TRACKING_FEDEX_AUTH_URL:https://apis-sandbox.fedex.com/oauth/token}
+      track-url: ${APP_TRACKING_FEDEX_TRACK_URL:https://apis-sandbox.fedex.com/track/v1/trackingnumbers}
+      client-id: ${APP_TRACKING_FEDEX_CLIENT_ID:}
+      client-secret: ${APP_TRACKING_FEDEX_CLIENT_SECRET:}
+    sync:
+      success-delay: ${APP_TRACKING_SYNC_SUCCESS_DELAY:PT4H}
+      transient-failure-delay: ${APP_TRACKING_SYNC_TRANSIENT_FAILURE_DELAY:PT2H}
+      rate-limit-delay: ${APP_TRACKING_SYNC_RATE_LIMIT_DELAY:PT6H}
+      permanent-failure-delay: ${APP_TRACKING_SYNC_PERMANENT_FAILURE_DELAY:PT24H}
+      lease-duration: ${APP_TRACKING_SYNC_LEASE_DURATION:PT10M}
+      max-raw-payload-chars: ${APP_TRACKING_SYNC_MAX_RAW_PAYLOAD_CHARS:65536}
   storage:
     provider: ${APP_STORAGE_PROVIDER:local}
     local:

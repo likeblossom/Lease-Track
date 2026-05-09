@@ -7,6 +7,7 @@ public record TrackingEventResponse(
         UUID id,
         UUID deliveryAttemptId,
         String trackingNumber,
+        String eventKey,
         String status,
         String statusCode,
         boolean delivered,

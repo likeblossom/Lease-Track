@@ -16,6 +16,11 @@ public class MockTrackingProvider implements TrackingProvider {
     }
 
     @Override
+    public String carrierCode() {
+        return "mock";
+    }
+
+    @Override
     public TrackingSummary track(String trackingNumber) {
         boolean delivered = trackingNumber != null
                 && trackingNumber.toUpperCase().contains("DELIVERED");
@@ -24,6 +29,7 @@ public class MockTrackingProvider implements TrackingProvider {
                 delivered ? "Delivered" : "In transit",
                 delivered ? "DELIVERED" : "IN_TRANSIT",
                 delivered,
-                Instant.now(clock));
+                Instant.now(clock),
+                "{\"provider\":\"mock\"}");
     }
 }

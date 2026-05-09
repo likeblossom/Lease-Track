@@ -69,6 +69,7 @@ public class NoticeMapper {
                 evidence.getDeliveryAttempt().getId(),
                 evidence.getTrackingNumber(),
                 evidence.getCarrierName(),
+                evidence.getCarrierCode(),
                 evidence.getCarrierReceiptRef(),
                 evidence.getDeliveryConfirmation(),
                 evidence.getDeliveryConfirmationMetadata(),
@@ -79,6 +80,7 @@ public class NoticeMapper {
                 evidence.getLatestTrackingStatus(),
                 evidence.getLatestTrackingStatusCode(),
                 evidence.getLatestTrackingEventAt(),
+                evidence.getLatestTrackingProviderError(),
                 evidenceStrength,
                 evidence.getCreatedAt(),
                 evidence.getUpdatedAt());
@@ -118,6 +120,7 @@ public class NoticeMapper {
                 trackingEvent.getId(),
                 trackingEvent.getDeliveryAttempt().getId(),
                 trackingEvent.getTrackingNumber(),
+                trackingEvent.getEventKey(),
                 trackingEvent.getStatus(),
                 trackingEvent.getStatusCode(),
                 trackingEvent.isDelivered(),

@@ -27,6 +27,9 @@ public class DeliveryEvidence {
     @Column(name = "carrier_name")
     private String carrierName;
 
+    @Column(name = "carrier_code")
+    private String carrierCode;
+
     @Column(name = "carrier_receipt_ref")
     private String carrierReceiptRef;
 
@@ -56,6 +59,12 @@ public class DeliveryEvidence {
 
     @Column(name = "latest_tracking_event_at")
     private Instant latestTrackingEventAt;
+
+    @Column(name = "latest_tracking_raw_payload", columnDefinition = "text")
+    private String latestTrackingRawPayload;
+
+    @Column(name = "latest_tracking_provider_error", columnDefinition = "text")
+    private String latestTrackingProviderError;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -93,6 +102,14 @@ public class DeliveryEvidence {
 
     public void setCarrierName(String carrierName) {
         this.carrierName = carrierName;
+    }
+
+    public String getCarrierCode() {
+        return carrierCode;
+    }
+
+    public void setCarrierCode(String carrierCode) {
+        this.carrierCode = carrierCode;
     }
 
     public String getCarrierReceiptRef() {
@@ -173,6 +190,22 @@ public class DeliveryEvidence {
 
     public void setLatestTrackingEventAt(Instant latestTrackingEventAt) {
         this.latestTrackingEventAt = latestTrackingEventAt;
+    }
+
+    public String getLatestTrackingRawPayload() {
+        return latestTrackingRawPayload;
+    }
+
+    public void setLatestTrackingRawPayload(String latestTrackingRawPayload) {
+        this.latestTrackingRawPayload = latestTrackingRawPayload;
+    }
+
+    public String getLatestTrackingProviderError() {
+        return latestTrackingProviderError;
+    }
+
+    public void setLatestTrackingProviderError(String latestTrackingProviderError) {
+        this.latestTrackingProviderError = latestTrackingProviderError;
     }
 
     public Instant getCreatedAt() {

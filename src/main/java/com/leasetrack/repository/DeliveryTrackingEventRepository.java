@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface DeliveryTrackingEventRepository extends JpaRepository<DeliveryTrackingEvent, UUID> {
 
     List<DeliveryTrackingEvent> findByDeliveryAttempt_Notice_IdOrderByCheckedAtAsc(UUID noticeId);
+
+    boolean existsByDeliveryAttempt_IdAndEventKey(UUID deliveryAttemptId, String eventKey);
 }

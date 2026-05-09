@@ -54,6 +54,9 @@ public class DeliveryAttempt {
     @Column(name = "last_tracking_checked_at")
     private Instant lastTrackingCheckedAt;
 
+    @Column(name = "tracking_next_check_at")
+    private Instant trackingNextCheckAt;
+
     @Column(name = "deadline_reminder_sent", nullable = false)
     private boolean deadlineReminderSent;
 
@@ -144,6 +147,14 @@ public class DeliveryAttempt {
 
     public void setLastTrackingCheckedAt(Instant lastTrackingCheckedAt) {
         this.lastTrackingCheckedAt = lastTrackingCheckedAt;
+    }
+
+    public Instant getTrackingNextCheckAt() {
+        return trackingNextCheckAt;
+    }
+
+    public void setTrackingNextCheckAt(Instant trackingNextCheckAt) {
+        this.trackingNextCheckAt = trackingNextCheckAt;
     }
 
     public boolean isDeadlineReminderSent() {

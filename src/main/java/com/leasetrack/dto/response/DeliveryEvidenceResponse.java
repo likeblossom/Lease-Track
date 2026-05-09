@@ -9,6 +9,7 @@ public record DeliveryEvidenceResponse(
         UUID deliveryAttemptId,
         String trackingNumber,
         String carrierName,
+        String carrierCode,
         String carrierReceiptRef,
         Boolean deliveryConfirmation,
         String deliveryConfirmationMetadata,
@@ -19,6 +20,7 @@ public record DeliveryEvidenceResponse(
         String latestTrackingStatus,
         String latestTrackingStatusCode,
         Instant latestTrackingEventAt,
+        String latestTrackingProviderError,
         EvidenceStrength evidenceStrength,
         Instant createdAt,
         Instant updatedAt) {

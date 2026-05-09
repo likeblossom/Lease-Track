@@ -38,6 +38,8 @@ import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.repository.EvidencePackageSnapshotRepository;
 import com.leasetrack.repository.UserRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
+import com.leasetrack.tracking.TrackingInput;
+import com.leasetrack.tracking.TrackingProviderRegistry;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -58,6 +60,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class NoticeService {
@@ -77,6 +80,7 @@ public class NoticeService {
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final TrackingProviderRegistry trackingProviderRegistry;
     private final Clock clock;
 
     public NoticeService(
@@ -93,6 +97,7 @@ public class NoticeService {
             CurrentUserService currentUserService,
             UserRepository userRepository,
             ObjectMapper objectMapper,
+            TrackingProviderRegistry trackingProviderRegistry,
             Clock clock) {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
@@ -107,6 +112,7 @@ public class NoticeService {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.trackingProviderRegistry = trackingProviderRegistry;
         this.clock = clock;
     }
 
@@ -229,8 +235,33 @@ public class NoticeService {
                     return newEvidence;
                 });
 
-        evidence.setTrackingNumber(request.trackingNumber());
-        evidence.setCarrierName(request.carrierName());
+        TrackingInput trackingInput = trackingProviderRegistry
+                .resolve(request.carrierName(), request.trackingNumber(), request.trackingUrl())
+                .orElse(null);
+        boolean hasTrackingUrl = StringUtils.hasText(request.trackingUrl());
+        boolean hasCarrierAndNumber = StringUtils.hasText(request.carrierName())
+                && StringUtils.hasText(request.trackingNumber());
+
+        if (hasTrackingUrl && trackingInput == null) {
+            throw new IllegalArgumentException(
+                    "Unable to parse tracking URL. Provide a supported carrier and tracking number.");
+        }
+        if (!hasTrackingUrl && !hasCarrierAndNumber) {
+            throw new IllegalArgumentException(
+                    "Provide either a supported tracking URL or both carrier name and tracking number.");
+        }
+
+        if (trackingInput != null) {
+            evidence.setCarrierName(StringUtils.hasText(request.carrierName())
+                    ? request.carrierName().trim()
+                    : trackingInput.carrierCode());
+            evidence.setCarrierCode(trackingInput.carrierCode());
+            evidence.setTrackingNumber(trackingInput.trackingNumber());
+        } else {
+            evidence.setCarrierName(request.carrierName());
+            evidence.setCarrierCode(TrackingProviderRegistry.normalizeCarrierCode(request.carrierName()));
+            evidence.setTrackingNumber(request.trackingNumber());
+        }
         evidence.setCarrierReceiptRef(request.carrierReceiptRef());
         evidence.setDeliveryConfirmation(request.deliveryConfirmation());
         evidence.setDeliveryConfirmationMetadata(request.deliveryConfirmationMetadata());
