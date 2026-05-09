@@ -3,6 +3,7 @@ package com.leasetrack.mapper;
 import com.leasetrack.domain.entity.AuditEvent;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.DeliveryTrackingEvent;
 import com.leasetrack.domain.entity.EvidenceDocument;
 import com.leasetrack.domain.enums.EvidenceStrength;
 import com.leasetrack.dto.response.AuditEventResponse;
@@ -12,6 +13,7 @@ import com.leasetrack.dto.response.EvidenceDocumentResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.dto.response.TrackingEventResponse;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -45,7 +47,7 @@ public class NoticeMapper {
                 notice.getUpdatedAt());
     }
 
-    private DeliveryAttemptResponse toResponse(DeliveryAttempt attempt) {
+    public DeliveryAttemptResponse toResponse(DeliveryAttempt attempt) {
         return new DeliveryAttemptResponse(
                 attempt.getId(),
                 attempt.getAttemptNumber(),
@@ -54,6 +56,9 @@ public class NoticeMapper {
                 attempt.getSentAt(),
                 attempt.getDeliveredAt(),
                 attempt.getDeadlineAt(),
+                attempt.getTrackingSyncStatus(),
+                attempt.getLastTrackingCheckedAt(),
+                attempt.isDeadlineReminderSent(),
                 attempt.getCreatedAt(),
                 attempt.getUpdatedAt());
     }
@@ -106,5 +111,18 @@ public class NoticeMapper {
                 document.getSha256Checksum(),
                 document.getUploadedByUserId(),
                 document.getCreatedAt());
+    }
+
+    public TrackingEventResponse toResponse(DeliveryTrackingEvent trackingEvent) {
+        return new TrackingEventResponse(
+                trackingEvent.getId(),
+                trackingEvent.getDeliveryAttempt().getId(),
+                trackingEvent.getTrackingNumber(),
+                trackingEvent.getStatus(),
+                trackingEvent.getStatusCode(),
+                trackingEvent.isDelivered(),
+                trackingEvent.getEventAt(),
+                trackingEvent.getCheckedAt(),
+                trackingEvent.getErrorMessage());
     }
 }

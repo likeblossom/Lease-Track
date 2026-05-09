@@ -1,16 +1,20 @@
 package com.leasetrack.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.DeliveryTrackingEvent;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
 import com.leasetrack.domain.enums.TrackingSyncStatus;
 import com.leasetrack.repository.DeliveryAttemptRepository;
+import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.tracking.TrackingProvider;
 import com.leasetrack.tracking.TrackingSummary;
 import java.time.Clock;
@@ -32,6 +36,9 @@ class TrackingSyncServiceTest {
     private DeliveryAttemptRepository deliveryAttemptRepository;
 
     @Mock
+    private DeliveryTrackingEventRepository deliveryTrackingEventRepository;
+
+    @Mock
     private TrackingProvider trackingProvider;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
@@ -39,7 +46,11 @@ class TrackingSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        trackingSyncService = new TrackingSyncService(deliveryAttemptRepository, trackingProvider, clock);
+        trackingSyncService = new TrackingSyncService(
+                deliveryAttemptRepository,
+                deliveryTrackingEventRepository,
+                trackingProvider,
+                clock);
     }
 
     @Test
@@ -71,6 +82,7 @@ class TrackingSyncServiceTest {
         assertThat(attempt.getDeliveredAt()).isEqualTo(Instant.parse("2026-05-06T11:30:00Z"));
         assertThat(evidence.getLatestTrackingStatusCode()).isEqualTo("DELIVERED");
         assertThat(evidence.getDeliveryConfirmation()).isTrue();
+        verify(deliveryTrackingEventRepository).save(any(DeliveryTrackingEvent.class));
     }
 
     private DeliveryAttempt registeredMailAttempt() {

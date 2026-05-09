@@ -1,7 +1,10 @@
 package com.leasetrack.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.DeliveryAttempt;
+import com.leasetrack.domain.entity.EvidencePackageSnapshot;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.entity.User;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
@@ -17,10 +20,13 @@ import com.leasetrack.dto.response.AuditEventResponse;
 import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.EvidenceDocumentResponse;
 import com.leasetrack.dto.response.EvidencePackageResponse;
+import com.leasetrack.dto.response.EvidencePackageAttemptResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.dto.response.TrackingEventResponse;
 import com.leasetrack.event.publisher.NoticeEventPublisher;
 import com.leasetrack.exception.DeliveryAttemptNotFoundException;
+import com.leasetrack.exception.EvidencePackageGenerationException;
 import com.leasetrack.exception.InvalidStatusTransitionException;
 import com.leasetrack.exception.NoticeNotFoundException;
 import com.leasetrack.mapper.NoticeMapper;
@@ -28,15 +34,24 @@ import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
+import com.leasetrack.repository.DeliveryTrackingEventRepository;
+import com.leasetrack.repository.EvidencePackageSnapshotRepository;
 import com.leasetrack.repository.UserRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -47,16 +62,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class NoticeService {
 
+    private static final String EVIDENCE_PACKAGE_VERSION = "1.0";
+
     private final NoticeRepository noticeRepository;
     private final DeliveryAttemptRepository deliveryAttemptRepository;
     private final DeliveryEvidenceRepository deliveryEvidenceRepository;
     private final EvidenceDocumentRepository evidenceDocumentRepository;
+    private final DeliveryTrackingEventRepository deliveryTrackingEventRepository;
+    private final EvidencePackageSnapshotRepository evidencePackageSnapshotRepository;
     private final EvidenceStrengthService evidenceStrengthService;
     private final AuditService auditService;
     private final NoticeEventPublisher noticeEventPublisher;
     private final NoticeMapper noticeMapper;
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public NoticeService(
@@ -64,23 +84,29 @@ public class NoticeService {
             DeliveryAttemptRepository deliveryAttemptRepository,
             DeliveryEvidenceRepository deliveryEvidenceRepository,
             EvidenceDocumentRepository evidenceDocumentRepository,
+            DeliveryTrackingEventRepository deliveryTrackingEventRepository,
+            EvidencePackageSnapshotRepository evidencePackageSnapshotRepository,
             EvidenceStrengthService evidenceStrengthService,
             AuditService auditService,
             NoticeEventPublisher noticeEventPublisher,
             NoticeMapper noticeMapper,
             CurrentUserService currentUserService,
             UserRepository userRepository,
+            ObjectMapper objectMapper,
             Clock clock) {
         this.noticeRepository = noticeRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
         this.deliveryEvidenceRepository = deliveryEvidenceRepository;
         this.evidenceDocumentRepository = evidenceDocumentRepository;
+        this.deliveryTrackingEventRepository = deliveryTrackingEventRepository;
+        this.evidencePackageSnapshotRepository = evidencePackageSnapshotRepository;
         this.evidenceStrengthService = evidenceStrengthService;
         this.auditService = auditService;
         this.noticeEventPublisher = noticeEventPublisher;
         this.noticeMapper = noticeMapper;
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -236,14 +262,26 @@ public class NoticeService {
     public EvidencePackageResponse getEvidencePackage(UUID noticeId) {
         Notice notice = noticeRepository.findById(noticeId)
                 .orElseThrow(() -> new NoticeNotFoundException(noticeId));
-        assertCanRead(currentUserService.currentUser(), notice);
+        User currentUser = currentUserService.currentUser();
+        assertCanRead(currentUser, notice);
+        Instant generatedAt = Instant.now(clock);
+        UUID packageId = UUID.randomUUID();
 
-        List<DeliveryEvidenceResponse> evidence = notice.getDeliveryAttempts().stream()
+        List<DeliveryAttempt> orderedAttempts = notice.getDeliveryAttempts().stream()
+                .sorted(Comparator.comparingInt(DeliveryAttempt::getAttemptNumber))
+                .toList();
+
+        Map<UUID, DeliveryEvidenceResponse> evidenceByAttemptId = orderedAttempts.stream()
                 .map(attempt -> deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())
                         .map(deliveryEvidence -> noticeMapper.toResponse(
                                 deliveryEvidence,
                                 evidenceStrengthService.classify(attempt, deliveryEvidence))))
                 .flatMap(Optional::stream)
+                .collect(Collectors.toMap(DeliveryEvidenceResponse::deliveryAttemptId, response -> response));
+
+        List<DeliveryEvidenceResponse> evidence = orderedAttempts.stream()
+                .map(attempt -> evidenceByAttemptId.get(attempt.getId()))
+                .filter(Objects::nonNull)
                 .toList();
 
         EvidenceStrength strongestEvidenceStrength = evidence.stream()
@@ -254,6 +292,23 @@ public class NoticeService {
                 .findByNoticeIdOrderByCreatedAtAsc(noticeId).stream()
                 .map(noticeMapper::toResponse)
                 .toList();
+        Map<UUID, List<EvidenceDocumentResponse>> documentsByAttemptId = evidenceDocuments.stream()
+                .collect(Collectors.groupingBy(EvidenceDocumentResponse::deliveryAttemptId));
+
+        List<TrackingEventResponse> trackingHistory = deliveryTrackingEventRepository
+                .findByDeliveryAttempt_Notice_IdOrderByCheckedAtAsc(noticeId).stream()
+                .map(noticeMapper::toResponse)
+                .toList();
+        Map<UUID, List<TrackingEventResponse>> trackingHistoryByAttemptId = trackingHistory.stream()
+                .collect(Collectors.groupingBy(TrackingEventResponse::deliveryAttemptId));
+
+        List<EvidencePackageAttemptResponse> attempts = orderedAttempts.stream()
+                .map(attempt -> new EvidencePackageAttemptResponse(
+                        noticeMapper.toResponse(attempt),
+                        evidenceByAttemptId.get(attempt.getId()),
+                        documentsByAttemptId.getOrDefault(attempt.getId(), List.of()),
+                        trackingHistoryByAttemptId.getOrDefault(attempt.getId(), List.of())))
+                .toList();
 
         auditService.recordEvidencePackageGenerated(noticeId);
 
@@ -261,14 +316,79 @@ public class NoticeService {
                 .map(noticeMapper::toResponse)
                 .toList();
 
-        return new EvidencePackageResponse(
+        EvidencePackageCanonicalPayload canonicalPayload = new EvidencePackageCanonicalPayload(
+                EVIDENCE_PACKAGE_VERSION,
                 noticeId,
-                Instant.now(clock),
+                currentUser.getId(),
+                generatedAt,
                 noticeMapper.toResponse(notice),
+                attempts,
                 evidence,
                 evidenceDocuments,
+                trackingHistory,
                 auditEvents,
                 strongestEvidenceStrength);
+        String packageHash = sha256Hex(canonicalJson(canonicalPayload));
+
+        EvidencePackageResponse response = new EvidencePackageResponse(
+                packageId,
+                EVIDENCE_PACKAGE_VERSION,
+                packageHash,
+                noticeId,
+                currentUser.getId(),
+                generatedAt,
+                noticeMapper.toResponse(notice),
+                attempts,
+                evidence,
+                evidenceDocuments,
+                trackingHistory,
+                auditEvents,
+                strongestEvidenceStrength);
+        persistEvidencePackageSnapshot(response);
+        return response;
+    }
+
+    private void persistEvidencePackageSnapshot(EvidencePackageResponse response) {
+        EvidencePackageSnapshot snapshot = new EvidencePackageSnapshot();
+        snapshot.setId(response.packageId());
+        snapshot.setNoticeId(response.noticeId());
+        snapshot.setPackageVersion(response.packageVersion());
+        snapshot.setPackageHash(response.packageHash());
+        snapshot.setGeneratedByUserId(response.generatedByUserId());
+        snapshot.setGeneratedAt(response.generatedAt());
+        snapshot.setPackageJson(canonicalJson(response));
+        evidencePackageSnapshotRepository.save(snapshot);
+    }
+
+    private String canonicalJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            throw new EvidencePackageGenerationException("Unable to serialize evidence package", ex);
+        }
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new EvidencePackageGenerationException("Unable to hash evidence package", ex);
+        }
+    }
+
+    private record EvidencePackageCanonicalPayload(
+            String packageVersion,
+            UUID noticeId,
+            UUID generatedByUserId,
+            Instant generatedAt,
+            NoticeResponse notice,
+            List<EvidencePackageAttemptResponse> attempts,
+            List<DeliveryEvidenceResponse> evidence,
+            List<EvidenceDocumentResponse> evidenceDocuments,
+            List<TrackingEventResponse> trackingHistory,
+            List<AuditEventResponse> auditEvents,
+            EvidenceStrength strongestEvidenceStrength) {
     }
 
     private EvidenceStrength stronger(EvidenceStrength first, EvidenceStrength second) {

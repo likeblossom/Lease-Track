@@ -141,6 +141,8 @@ class NoticeWorkflowIntegrationTest {
         assertThat(documentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(documentResponse.getBody()).isNotNull();
         assertThat(documentResponse.getBody().get("documentType").asText()).isEqualTo("CARRIER_RECEIPT");
+        assertThat(documentResponse.getBody().get("sha256Checksum").asText())
+                .isEqualTo("6f32860910ca0fb2a20c7fda143666b09dbf8db5238195c90a586fb542ff0cad");
 
         ResponseEntity<JsonNode> packageResponse = restTemplate.exchange(
                 url("/api/notices/%s/evidence-package".formatted(noticeId)),
@@ -152,7 +154,10 @@ class NoticeWorkflowIntegrationTest {
         assertThat(packageResponse.getBody()).isNotNull();
         assertThat(packageResponse.getBody().get("noticeId").asText()).isEqualTo(noticeId.toString());
         assertThat(packageResponse.getBody().get("strongestEvidenceStrength").asText()).isEqualTo("STRONG");
+        assertThat(packageResponse.getBody().get("attempts").size()).isEqualTo(1);
         assertThat(packageResponse.getBody().get("evidenceDocuments").size()).isEqualTo(1);
+        assertThat(packageResponse.getBody().get("evidenceDocuments").get(0).get("sha256Checksum").asText())
+                .isEqualTo("6f32860910ca0fb2a20c7fda143666b09dbf8db5238195c90a586fb542ff0cad");
         assertThat(packageResponse.getBody().get("auditEvents").size()).isGreaterThanOrEqualTo(3);
     }
 

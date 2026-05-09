@@ -8,8 +8,11 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.DeliveryTrackingEvent;
+import com.leasetrack.domain.entity.EvidencePackageSnapshot;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.entity.User;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
@@ -31,7 +34,9 @@ import com.leasetrack.mapper.NoticeMapper;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.EvidenceDocumentRepository;
+import com.leasetrack.repository.EvidencePackageSnapshotRepository;
 import com.leasetrack.repository.NoticeRepository;
+import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.repository.UserRepository;
 import com.leasetrack.security.CurrentUserService;
 import java.time.Clock;
@@ -68,6 +73,12 @@ class NoticeServiceTest {
     @Mock
     private EvidenceDocumentRepository evidenceDocumentRepository;
 
+    @Mock
+    private DeliveryTrackingEventRepository deliveryTrackingEventRepository;
+
+    @Mock
+    private EvidencePackageSnapshotRepository evidencePackageSnapshotRepository;
+
     private final NoticeMapper noticeMapper = new NoticeMapper();
     private final EvidenceStrengthService evidenceStrengthService = new EvidenceStrengthService();
     @Mock
@@ -83,6 +94,7 @@ class NoticeServiceTest {
     private UserRepository userRepository;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final UUID landlordUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private NoticeService noticeService;
 
@@ -94,12 +106,15 @@ class NoticeServiceTest {
                 deliveryAttemptRepository,
                 deliveryEvidenceRepository,
                 evidenceDocumentRepository,
+                deliveryTrackingEventRepository,
+                evidencePackageSnapshotRepository,
                 evidenceStrengthService,
                 auditService,
                 noticeEventPublisher,
                 noticeMapper,
                 currentUserService,
                 userRepository,
+                objectMapper,
                 clock);
     }
 
@@ -331,21 +346,48 @@ class NoticeServiceTest {
         evidence.setDeliveryConfirmation(true);
         evidence.setCreatedAt(Instant.parse("2026-05-06T12:00:00Z"));
         evidence.setUpdatedAt(Instant.parse("2026-05-06T12:00:00Z"));
+        DeliveryTrackingEvent trackingEvent = new DeliveryTrackingEvent();
+        trackingEvent.setId(UUID.randomUUID());
+        trackingEvent.setDeliveryAttempt(attempt);
+        trackingEvent.setTrackingNumber("RN123456789CA");
+        trackingEvent.setStatus("Delivered");
+        trackingEvent.setStatusCode("DELIVERED");
+        trackingEvent.setDelivered(true);
+        trackingEvent.setEventAt(Instant.parse("2026-05-06T11:30:00Z"));
+        trackingEvent.setCheckedAt(Instant.parse("2026-05-06T12:00:00Z"));
 
         when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
         when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId())).thenReturn(Optional.of(evidence));
         when(evidenceDocumentRepository.findByNoticeIdOrderByCreatedAtAsc(notice.getId())).thenReturn(List.of());
+        when(deliveryTrackingEventRepository.findByDeliveryAttempt_Notice_IdOrderByCheckedAtAsc(notice.getId()))
+                .thenReturn(List.of(trackingEvent));
         when(auditService.getAuditEvents(notice.getId())).thenReturn(List.of());
 
         EvidencePackageResponse response = noticeService.getEvidencePackage(notice.getId());
 
         assertThat(response.noticeId()).isEqualTo(notice.getId());
+        assertThat(response.packageId()).isNotNull();
+        assertThat(response.packageVersion()).isEqualTo("1.0");
+        assertThat(response.packageHash()).hasSize(64);
+        assertThat(response.generatedByUserId()).isEqualTo(landlordUserId);
         assertThat(response.generatedAt()).isEqualTo(Instant.parse("2026-05-06T12:00:00Z"));
         assertThat(response.notice().id()).isEqualTo(notice.getId());
+        assertThat(response.attempts()).hasSize(1);
+        assertThat(response.attempts().getFirst().attempt().id()).isEqualTo(attempt.getId());
+        assertThat(response.attempts().getFirst().evidence().id()).isEqualTo(evidence.getId());
+        assertThat(response.attempts().getFirst().trackingHistory()).hasSize(1);
         assertThat(response.evidence()).hasSize(1);
         assertThat(response.evidenceDocuments()).isEmpty();
+        assertThat(response.trackingHistory()).hasSize(1);
+        assertThat(response.trackingHistory().getFirst().statusCode()).isEqualTo("DELIVERED");
         assertThat(response.evidence().getFirst().evidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
         assertThat(response.strongestEvidenceStrength()).isEqualTo(EvidenceStrength.STRONG);
+        ArgumentCaptor<EvidencePackageSnapshot> snapshotCaptor =
+                ArgumentCaptor.forClass(EvidencePackageSnapshot.class);
+        verify(evidencePackageSnapshotRepository).save(snapshotCaptor.capture());
+        assertThat(snapshotCaptor.getValue().getId()).isEqualTo(response.packageId());
+        assertThat(snapshotCaptor.getValue().getPackageHash()).isEqualTo(response.packageHash());
+        assertThat(snapshotCaptor.getValue().getPackageJson()).contains(response.packageHash());
         verify(auditService).recordEvidencePackageGenerated(notice.getId());
     }
 
