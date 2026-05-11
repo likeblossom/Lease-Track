@@ -101,7 +101,7 @@ class EvidenceDocumentServiceTest {
                 .thenReturn(Optional.of(evidence));
         when(documentStorageService.store(any(DocumentStorageRequest.class)))
                 .thenReturn(new StoredDocument("local", "notice/attempt/signature.pdf", "abc123", 6));
-        when(deliveryEvidenceRepository.save(any(DeliveryEvidence.class)))
+        when(deliveryEvidenceRepository.saveAndFlush(any(DeliveryEvidence.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(evidenceDocumentRepository.save(any(EvidenceDocument.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -123,6 +123,41 @@ class EvidenceDocumentServiceTest {
         assertThat(evidence.getSignedAcknowledgementRef()).isEqualTo("notice/attempt/signature.pdf");
         verify(auditService).recordEvidenceDocumentUploaded(any(EvidenceDocument.class));
         verify(noticeEventPublisher).publishEvidenceUploaded(eq(evidence), eq(evidenceStrengthService.classify(attempt, evidence)));
+    }
+
+    @Test
+    void uploadEvidenceDocumentPersistsNewEvidenceBeforeSavingDocumentReference() {
+        Notice notice = notice();
+        DeliveryAttempt attempt = attempt(notice);
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "receipt.txt",
+                "text/plain",
+                "receipt".getBytes());
+
+        when(deliveryAttemptRepository.findByIdAndNotice_Id(attempt.getId(), notice.getId()))
+                .thenReturn(Optional.of(attempt));
+        when(deliveryEvidenceRepository.findByDeliveryAttempt_Id(attempt.getId()))
+                .thenReturn(Optional.empty());
+        when(documentStorageService.store(any(DocumentStorageRequest.class)))
+                .thenReturn(new StoredDocument("s3", "evidence-documents/receipt.txt", "def456", 7));
+        when(deliveryEvidenceRepository.saveAndFlush(any(DeliveryEvidence.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(evidenceDocumentRepository.save(any(EvidenceDocument.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        EvidenceDocumentResponse response = evidenceDocumentService.uploadEvidenceDocument(
+                notice.getId(),
+                attempt.getId(),
+                EvidenceDocumentType.CARRIER_RECEIPT,
+                file);
+
+        assertThat(response.storageProvider()).isEqualTo("s3");
+        assertThat(response.storageKey()).isEqualTo("evidence-documents/receipt.txt");
+        assertThat(response.deliveryEvidenceId()).isNotNull();
+        assertThat(attempt.getEvidence()).isNotNull();
+        assertThat(attempt.getEvidence().getCarrierReceiptRef()).isEqualTo("evidence-documents/receipt.txt");
+        verify(deliveryEvidenceRepository).saveAndFlush(any(DeliveryEvidence.class));
     }
 
     private Notice notice() {

@@ -13,6 +13,7 @@ import com.leasetrack.dto.response.DeliveryEvidenceResponse;
 import com.leasetrack.dto.response.EvidencePackageResponse;
 import com.leasetrack.dto.response.NoticeResponse;
 import com.leasetrack.dto.response.NoticeSummaryResponse;
+import com.leasetrack.service.EvidencePackagePdfService;
 import com.leasetrack.service.EvidenceDocumentService;
 import com.leasetrack.service.NoticeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +28,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.SortDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,10 +49,15 @@ public class NoticeController {
 
     private final NoticeService noticeService;
     private final EvidenceDocumentService evidenceDocumentService;
+    private final EvidencePackagePdfService evidencePackagePdfService;
 
-    public NoticeController(NoticeService noticeService, EvidenceDocumentService evidenceDocumentService) {
+    public NoticeController(
+            NoticeService noticeService,
+            EvidenceDocumentService evidenceDocumentService,
+            EvidencePackagePdfService evidencePackagePdfService) {
         this.noticeService = noticeService;
         this.evidenceDocumentService = evidenceDocumentService;
+        this.evidencePackagePdfService = evidencePackagePdfService;
     }
 
     @PostMapping
@@ -132,5 +139,17 @@ public class NoticeController {
     @Operation(summary = "Generate a JSON evidence package for a notice")
     public EvidencePackageResponse getEvidencePackage(@PathVariable UUID noticeId) {
         return noticeService.getEvidencePackage(noticeId);
+    }
+
+    @GetMapping(value = "/{noticeId}/evidence-package.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @Operation(summary = "Generate a PDF evidence package for a notice")
+    public ResponseEntity<byte[]> getEvidencePackagePdf(@PathVariable UUID noticeId) {
+        EvidencePackageResponse evidencePackage = noticeService.getEvidencePackage(noticeId);
+        byte[] pdf = evidencePackagePdfService.render(evidencePackage);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"lease-track-evidence-" + noticeId + ".pdf\"")
+                .body(pdf);
     }
 }

@@ -57,3 +57,7 @@ app:
     provider: ${APP_STORAGE_PROVIDER:local}
     local:
       root: ${APP_LOCAL_STORAGE_ROOT:./data/evidence-documents}
+    s3:
+      bucket: ${APP_STORAGE_S3_BUCKET:}
+      region: ${APP_STORAGE_S3_REGION:ca-central-1}
+      prefix: ${APP_STORAGE_S3_PREFIX:evidence-documents}

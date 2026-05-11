@@ -89,8 +89,8 @@ public class EvidenceDocumentService {
         StoredDocument storedDocument = storeFile(noticeId, deliveryAttemptId, documentId, file);
         applyDocumentReference(evidence, documentType, storedDocument.storageKey());
         evidence.setUpdatedAt(now);
-        attempt.setEvidence(evidence);
-        DeliveryEvidence savedEvidence = deliveryEvidenceRepository.save(evidence);
+        DeliveryEvidence savedEvidence = deliveryEvidenceRepository.saveAndFlush(evidence);
+        attempt.setEvidence(savedEvidence);
 
         EvidenceDocument document = new EvidenceDocument();
         document.setId(documentId);

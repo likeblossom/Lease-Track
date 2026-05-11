@@ -18,10 +18,24 @@
 
     <properties>
         <java.version>21</java.version>
+        <aws.sdk.version>2.42.1</aws.sdk.version>
         <jjwt.version>0.12.6</jjwt.version>
         <mockito.version>5.17.0</mockito.version>
+        <pdfbox.version>3.0.7</pdfbox.version>
         <springdoc.version>2.8.8</springdoc.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -47,6 +61,15 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
