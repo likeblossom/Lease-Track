@@ -71,9 +71,8 @@ class AuthServiceTest {
     }
 
     @Test
-    void registerAllowsOnlyLandlordForPublicSignupAfterBootstrap() {
+    void registerAllowsLandlordAsFirstPublicSignup() {
         when(userRepository.findByEmail("owner@example.com")).thenReturn(Optional.empty());
-        when(userRepository.count()).thenReturn(1L);
         when(passwordEncoder.encode("password123")).thenReturn("encoded");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -89,15 +88,35 @@ class AuthServiceTest {
     }
 
     @Test
-    void registerRejectsPropertyManagerForPublicSignupAfterBootstrap() {
+    void registerRejectsAdminTenantAndPropertyManagerForPublicSignup() {
+        assertPublicSignupRoleRequiresInvitation(UserRole.ADMIN);
+        assertPublicSignupRoleRequiresInvitation(UserRole.TENANT);
+        assertPublicSignupRoleRequiresInvitation(UserRole.PROPERTY_MANAGER);
+    }
+
+    @Test
+    void registerRejectsDuplicateEmail() {
+        when(userRepository.findByEmail("owner@example.com")).thenReturn(Optional.of(new User()));
+
+        assertThatThrownBy(() -> authService.register(new RegisterRequest(
+                " Owner@Example.com ",
+                "password123",
+                "Owner User",
+                UserRole.LANDLORD)))
+                .isInstanceOf(UserRegistrationException.class)
+                .hasMessage("Email is already registered");
+
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    private void assertPublicSignupRoleRequiresInvitation(UserRole role) {
         when(userRepository.findByEmail("manager@example.com")).thenReturn(Optional.empty());
-        when(userRepository.count()).thenReturn(1L);
 
         assertThatThrownBy(() -> authService.register(new RegisterRequest(
                 "manager@example.com",
                 "password123",
                 "Manager User",
-                UserRole.PROPERTY_MANAGER)))
+                role)))
                 .isInstanceOf(UserRegistrationException.class)
                 .hasMessage("This role requires an invitation");
 

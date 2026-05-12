@@ -37,7 +37,7 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Register the first admin or a non-tenant account")
+    @Operation(summary = "Register a public landlord account")
     public UserResponse register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
     }

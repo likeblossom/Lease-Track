@@ -82,11 +82,7 @@ public class AuthService {
             throw new UserRegistrationException("Email is already registered");
         }
 
-        long userCount = userRepository.count();
-        if (userCount == 0 && request.role() != UserRole.ADMIN) {
-            throw new UserRegistrationException("The first registered user must be an admin");
-        }
-        if (userCount > 0 && request.role() != UserRole.LANDLORD) {
+        if (request.role() != UserRole.LANDLORD) {
             throw new UserRegistrationException("This role requires an invitation");
         }
 

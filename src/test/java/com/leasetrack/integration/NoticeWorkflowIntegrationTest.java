@@ -67,15 +67,13 @@ class NoticeWorkflowIntegrationTest {
 
     @Test
     void createNoticeAddEvidenceAndGenerateEvidencePackage() {
-        register("admin@leasetrack.test", "Admin User", "ADMIN");
         register("landlord@leasetrack.test", "Landlord User", "LANDLORD");
-        String adminToken = login("admin@leasetrack.test");
         String landlordToken = login("landlord@leasetrack.test");
         UUID tenantUserId = acceptInvitation(
-                createInvitation(adminToken, "tenant@leasetrack.test", "Tenant User", "TENANT"),
+                createInvitation(landlordToken, "tenant@leasetrack.test", "Tenant User", "TENANT"),
                 "Tenant User");
         String otherTenantToken = loginAcceptedTenant(
-                adminToken,
+                landlordToken,
                 "other-tenant@leasetrack.test",
                 "Other Tenant");
 
@@ -124,7 +122,7 @@ class NoticeWorkflowIntegrationTest {
                         "carrierName", "Canada Post",
                         "carrierReceiptRef", "receipts/rn123456789ca.pdf",
                         "deliveryConfirmation", true,
-                        "deliveryConfirmationMetadata", "Delivered to recipient"), authHeaders(adminToken)),
+                        "deliveryConfirmationMetadata", "Delivered to recipient"), authHeaders(landlordToken)),
                 JsonNode.class);
 
         assertThat(evidenceResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -135,7 +133,7 @@ class NoticeWorkflowIntegrationTest {
                 url("/api/notices/%s/attempts/%s/evidence/documents?documentType=CARRIER_RECEIPT"
                         .formatted(noticeId, attemptId)),
                 HttpMethod.POST,
-                multipartEntity(adminToken, "carrier-receipt.pdf", "receipt".getBytes()),
+                multipartEntity(landlordToken, "carrier-receipt.pdf", "receipt".getBytes()),
                 JsonNode.class);
 
         assertThat(documentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -147,7 +145,7 @@ class NoticeWorkflowIntegrationTest {
         ResponseEntity<JsonNode> packageResponse = restTemplate.exchange(
                 url("/api/notices/%s/evidence-package".formatted(noticeId)),
                 HttpMethod.GET,
-                new HttpEntity<>(authHeaders(adminToken)),
+                new HttpEntity<>(authHeaders(landlordToken)),
                 JsonNode.class);
 
         assertThat(packageResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
