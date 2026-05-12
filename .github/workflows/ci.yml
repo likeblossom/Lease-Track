@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  test:
-    name: Maven test
+  backend-test:
+    name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -28,7 +28,7 @@ jobs:
           java -version
           mvn -version
 
-      - name: Run tests
+      - name: Run Maven tests
         run: mvn --batch-mode --show-version --errors -DtrimStackTrace=false test
 
       - name: Print test failure reports
@@ -65,10 +65,106 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-diagnostics
+          name: backend-test-diagnostics
           path: |
             target/surefire-reports/**
             target/*.dump
             target/*-jvmRun*.dump
             target/*.dumpstream
           if-no-files-found: ignore
+
+  frontend-test:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run frontend tests
+        run: bun run test
+
+      - name: Build frontend
+        run: bun run build
+
+  endpoint-smoke:
+    name: Endpoint smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      APP_STORAGE_PROVIDER: local
+      POSTGRES_DB: leasetrack_endpoint_check
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start backend stack
+        run: docker compose up -d --build backend
+
+      - name: Wait for backend health
+        run: |
+          mkdir -p ci-diagnostics
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/api/health >ci-diagnostics/health.json; then
+              cat ci-diagnostics/health.json
+              exit 0
+            fi
+            echo "Waiting for backend health (${attempt}/60)..."
+            sleep 2
+          done
+          echo "Backend did not become healthy in time."
+          docker compose ps
+          docker compose logs --tail 300 backend
+          exit 1
+
+      - name: Run endpoint smoke checks
+        run: |
+          mkdir -p ci-diagnostics
+          set -o pipefail
+          scripts/smoke-endpoints.sh | tee ci-diagnostics/smoke-endpoints.log
+
+      - name: Print Compose diagnostics
+        if: failure()
+        run: |
+          echo "::group::Docker Compose ps"
+          docker compose ps || true
+          echo "::endgroup::"
+
+          echo "::group::Backend logs"
+          docker compose logs --tail 500 backend || true
+          echo "::endgroup::"
+
+          echo "::group::Dependency logs"
+          docker compose logs --tail 300 postgres rabbitmq || true
+          echo "::endgroup::"
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-smoke-diagnostics
+          path: |
+            ci-diagnostics/**
+          if-no-files-found: ignore
+
+      - name: Tear down backend stack
+        if: always()
+        run: docker compose down -v --remove-orphans
