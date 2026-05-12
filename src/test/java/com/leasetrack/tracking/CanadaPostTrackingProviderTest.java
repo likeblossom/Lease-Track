@@ -9,6 +9,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -83,6 +84,42 @@ class CanadaPostTrackingProviderTest {
         assertThat(summary.rawProviderPayload()).isEqualTo(detailsXml);
         assertThat(summary.events()).hasSize(2);
         assertThat(summary.events().getLast().statusCode()).isEqualTo("DELIVERED");
+        server.verify();
+    }
+
+    @Test
+    void fetchesDeliveryConfirmationCertificate() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        CanadaPostTrackingProvider provider = new CanadaPostTrackingProvider(
+                builder,
+                "https://ct.soa-gw.canadapost.ca",
+                "user",
+                "pass",
+                null,
+                null);
+        byte[] pdf = "%PDF-1.4".getBytes(StandardCharsets.UTF_8);
+        String xml = """
+                <delivery-confirmation-certificate>
+                  <filename>RN123456789CA.pdf</filename>
+                  <image>%s</image>
+                  <mime-type>application/pdf</mime-type>
+                </delivery-confirmation-certificate>
+                """.formatted(Base64.getEncoder().encodeToString(pdf));
+
+        server.expect(requestTo("https://ct.soa-gw.canadapost.ca/vis/certificate/RN123456789CA"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Authorization", "Basic " + Base64.getEncoder()
+                        .encodeToString("user:pass".getBytes(StandardCharsets.UTF_8))))
+                .andRespond(withSuccess(xml, MediaType.APPLICATION_XML));
+
+        Optional<DeliveryConfirmationCertificate> certificate =
+                provider.fetchDeliveryConfirmationCertificate("RN123456789CA");
+
+        assertThat(certificate).isPresent();
+        assertThat(certificate.get().filename()).isEqualTo("RN123456789CA.pdf");
+        assertThat(certificate.get().contentType()).isEqualTo("application/pdf");
+        assertThat(certificate.get().content()).isEqualTo(pdf);
         server.verify();
     }
 }

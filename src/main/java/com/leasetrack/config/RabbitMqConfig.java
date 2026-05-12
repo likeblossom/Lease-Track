@@ -18,6 +18,13 @@ public class RabbitMqConfig {
     public static final String NOTICE_EVENTS_EXCHANGE = "lease-track.notice-events";
     public static final String NOTICE_EVENTS_QUEUE = "lease-track.notice-events";
     public static final String NOTICE_EVENTS_ROUTING_KEY = "notice.events";
+    public static final String TRACKING_EXCHANGE = "lease-track.tracking";
+    public static final String TRACKING_SYNC_QUEUE = "lease-track.tracking.sync";
+    public static final String TRACKING_SYNC_ROUTING_KEY = "tracking.sync.requested";
+    public static final String DELIVERY_CONFIRMATION_CERTIFICATE_QUEUE =
+            "lease-track.tracking.delivery-confirmation-certificates";
+    public static final String DELIVERY_CONFIRMATION_CERTIFICATE_ROUTING_KEY =
+            "tracking.delivery-confirmation-certificate.requested";
 
     @Bean
     public DirectExchange noticeEventsExchange() {
@@ -34,6 +41,37 @@ public class RabbitMqConfig {
         return BindingBuilder.bind(noticeEventsQueue)
                 .to(noticeEventsExchange)
                 .with(NOTICE_EVENTS_ROUTING_KEY);
+    }
+
+    @Bean
+    public DirectExchange trackingExchange() {
+        return new DirectExchange(TRACKING_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue trackingSyncQueue() {
+        return new Queue(TRACKING_SYNC_QUEUE, true);
+    }
+
+    @Bean
+    public Binding trackingSyncBinding(Queue trackingSyncQueue, DirectExchange trackingExchange) {
+        return BindingBuilder.bind(trackingSyncQueue)
+                .to(trackingExchange)
+                .with(TRACKING_SYNC_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue deliveryConfirmationCertificateQueue() {
+        return new Queue(DELIVERY_CONFIRMATION_CERTIFICATE_QUEUE, true);
+    }
+
+    @Bean
+    public Binding deliveryConfirmationCertificateBinding(
+            Queue deliveryConfirmationCertificateQueue,
+            DirectExchange trackingExchange) {
+        return BindingBuilder.bind(deliveryConfirmationCertificateQueue)
+                .to(trackingExchange)
+                .with(DELIVERY_CONFIRMATION_CERTIFICATE_ROUTING_KEY);
     }
 
     @Bean

@@ -14,5 +14,9 @@ public interface TrackingProvider {
         return Optional.empty();
     }
 
+    default Optional<DeliveryConfirmationCertificate> fetchDeliveryConfirmationCertificate(String trackingNumber) {
+        return Optional.empty();
+    }
+
     TrackingSummary track(String trackingNumber);
 }

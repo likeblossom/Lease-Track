@@ -53,7 +53,7 @@ public class EvidenceDocument {
     @Column(name = "sha256_checksum", nullable = false)
     private String sha256Checksum;
 
-    @Column(name = "uploaded_by_user_id", nullable = false)
+    @Column(name = "uploaded_by_user_id")
     private UUID uploadedByUserId;
 
     @Column(name = "created_at", nullable = false)

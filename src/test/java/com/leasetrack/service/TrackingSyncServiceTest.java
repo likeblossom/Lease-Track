@@ -9,13 +9,22 @@ import static org.mockito.Mockito.when;
 
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
+import com.leasetrack.domain.entity.EvidenceDocument;
 import com.leasetrack.domain.entity.DeliveryTrackingEvent;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.EvidenceDocumentType;
 import com.leasetrack.domain.enums.TrackingSyncStatus;
+import com.leasetrack.event.model.DeliveryConfirmationCertificateRequested;
+import com.leasetrack.event.model.TrackingSyncRequested;
+import com.leasetrack.event.publisher.TrackingEventPublisher;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryTrackingEventRepository;
+import com.leasetrack.repository.EvidenceDocumentRepository;
+import com.leasetrack.storage.DocumentStorageService;
+import com.leasetrack.storage.StoredDocument;
+import com.leasetrack.tracking.DeliveryConfirmationCertificate;
 import com.leasetrack.tracking.TrackingProvider;
 import com.leasetrack.tracking.TrackingProviderErrorType;
 import com.leasetrack.tracking.TrackingProviderException;
@@ -29,6 +38,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +57,15 @@ class TrackingSyncServiceTest {
     private DeliveryTrackingEventRepository deliveryTrackingEventRepository;
 
     @Mock
+    private EvidenceDocumentRepository evidenceDocumentRepository;
+
+    @Mock
+    private DocumentStorageService documentStorageService;
+
+    @Mock
+    private TrackingEventPublisher trackingEventPublisher;
+
+    @Mock
     private TrackingProvider trackingProvider;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
@@ -57,7 +76,10 @@ class TrackingSyncServiceTest {
         trackingSyncService = new TrackingSyncService(
                 deliveryAttemptRepository,
                 deliveryTrackingEventRepository,
+                evidenceDocumentRepository,
+                documentStorageService,
                 new TrackingProviderRegistry(List.of(trackingProvider)),
+                trackingEventPublisher,
                 new org.springframework.beans.factory.support.StaticListableBeanFactory()
                         .getBeanProvider(io.micrometer.core.instrument.MeterRegistry.class),
                 new NoopTransactionManager(),
@@ -71,7 +93,31 @@ class TrackingSyncServiceTest {
     }
 
     @Test
-    void syncRegisteredMailTrackingMarksDeliveredWhenProviderReturnsDelivered() {
+    void enqueueRegisteredMailTrackingPublishesDueCandidates() {
+        DeliveryAttempt attempt = registeredMailAttempt();
+        DeliveryEvidence evidence = evidence(attempt, "RN123456789CA", "canada-post");
+        attempt.setEvidence(evidence);
+
+        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
+                eq(DeliveryMethod.REGISTERED_MAIL),
+                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
+                any()))
+                .thenReturn(List.of(attempt.getId()));
+        when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
+
+        int enqueuedCount = trackingSyncService.enqueueRegisteredMailTracking();
+
+        assertThat(enqueuedCount).isEqualTo(1);
+        assertThat(attempt.getTrackingSyncStatus()).isEqualTo(TrackingSyncStatus.PENDING);
+        assertThat(attempt.getTrackingNextCheckAt()).isEqualTo(Instant.parse("2026-05-06T12:10:00Z"));
+        verify(trackingEventPublisher).publishTrackingSyncRequested(
+                attempt.getId(),
+                "canada-post",
+                "RN123456789CA");
+    }
+
+    @Test
+    void processTrackingSyncMarksDeliveredWhenProviderReturnsDelivered() {
         DeliveryAttempt attempt = registeredMailAttempt();
         DeliveryEvidence evidence = new DeliveryEvidence();
         evidence.setId(UUID.randomUUID());
@@ -80,11 +126,6 @@ class TrackingSyncServiceTest {
         evidence.setCarrierCode("canada-post");
         attempt.setEvidence(evidence);
 
-        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
-                eq(DeliveryMethod.REGISTERED_MAIL),
-                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
-                any()))
-                .thenReturn(List.of(attempt.getId()));
         when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
         when(trackingProvider.supportsCarrier("canada-post")).thenReturn(true);
         when(deliveryTrackingEventRepository.existsByDeliveryAttempt_IdAndEventKey(eq(attempt.getId()), any()))
@@ -98,9 +139,9 @@ class TrackingSyncServiceTest {
                         Instant.parse("2026-05-06T11:30:00Z"),
                         "{\"status\":\"delivered\"}"));
 
-        int syncedCount = trackingSyncService.syncRegisteredMailTracking();
+        boolean synced = trackingSyncService.processTrackingSync(event(attempt));
 
-        assertThat(syncedCount).isEqualTo(1);
+        assertThat(synced).isTrue();
         assertThat(attempt.getTrackingSyncStatus()).isEqualTo(TrackingSyncStatus.SUCCESS);
         assertThat(attempt.getStatus()).isEqualTo(DeliveryAttemptStatus.DELIVERED);
         assertThat(attempt.getDeliveredAt()).isEqualTo(Instant.parse("2026-05-06T11:30:00Z"));
@@ -108,40 +149,34 @@ class TrackingSyncServiceTest {
         assertThat(evidence.getDeliveryConfirmation()).isTrue();
         assertThat(evidence.getLatestTrackingRawPayload()).isEqualTo("{\"status\":\"delivered\"}");
         verify(deliveryTrackingEventRepository).save(any(DeliveryTrackingEvent.class));
+        verify(trackingEventPublisher).publishDeliveryConfirmationCertificateRequested(
+                attempt.getId(),
+                "canada-post",
+                "RN123DELIVEREDCA");
     }
 
     @Test
-    void syncRegisteredMailTrackingMarksUnsupportedCarrierNotApplicable() {
+    void processTrackingSyncMarksUnsupportedCarrierNotApplicable() {
         DeliveryAttempt attempt = registeredMailAttempt();
         DeliveryEvidence evidence = evidence(attempt, "RN123456789CA", "unsupported-carrier");
         attempt.setEvidence(evidence);
 
-        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
-                eq(DeliveryMethod.REGISTERED_MAIL),
-                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
-                any()))
-                .thenReturn(List.of(attempt.getId()));
         when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
 
-        int syncedCount = trackingSyncService.syncRegisteredMailTracking();
+        boolean synced = trackingSyncService.processTrackingSync(event(attempt));
 
-        assertThat(syncedCount).isZero();
+        assertThat(synced).isFalse();
         assertThat(attempt.getTrackingSyncStatus()).isEqualTo(TrackingSyncStatus.NOT_APPLICABLE);
         assertThat(attempt.getTrackingNextCheckAt()).isEqualTo(Instant.parse("2026-05-07T12:00:00Z"));
         verify(deliveryTrackingEventRepository, never()).save(any(DeliveryTrackingEvent.class));
     }
 
     @Test
-    void syncRegisteredMailTrackingAppliesRateLimitBackoff() {
+    void processTrackingSyncAppliesRateLimitBackoff() {
         DeliveryAttempt attempt = registeredMailAttempt();
         DeliveryEvidence evidence = evidence(attempt, "RN123456789CA", "canada-post");
         attempt.setEvidence(evidence);
 
-        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
-                eq(DeliveryMethod.REGISTERED_MAIL),
-                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
-                any()))
-                .thenReturn(List.of(attempt.getId()));
         when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
         when(trackingProvider.supportsCarrier("canada-post")).thenReturn(true);
         when(trackingProvider.track("RN123456789CA"))
@@ -151,9 +186,9 @@ class TrackingSyncServiceTest {
                         "Canada Post tracking lookup failed with HTTP 429",
                         null));
 
-        int syncedCount = trackingSyncService.syncRegisteredMailTracking();
+        boolean synced = trackingSyncService.processTrackingSync(event(attempt));
 
-        assertThat(syncedCount).isZero();
+        assertThat(synced).isFalse();
         assertThat(attempt.getTrackingSyncStatus()).isEqualTo(TrackingSyncStatus.FAILED);
         assertThat(attempt.getTrackingNextCheckAt()).isEqualTo(Instant.parse("2026-05-06T18:00:00Z"));
         assertThat(evidence.getLatestTrackingProviderError()).contains("RATE_LIMITED HTTP 429");
@@ -161,16 +196,11 @@ class TrackingSyncServiceTest {
     }
 
     @Test
-    void syncRegisteredMailTrackingSkipsDuplicateCarrierEvents() {
+    void processTrackingSyncSkipsDuplicateCarrierEvents() {
         DeliveryAttempt attempt = registeredMailAttempt();
         DeliveryEvidence evidence = evidence(attempt, "RN123DELIVEREDCA", "canada-post");
         attempt.setEvidence(evidence);
 
-        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
-                eq(DeliveryMethod.REGISTERED_MAIL),
-                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
-                any()))
-                .thenReturn(List.of(attempt.getId()));
         when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
         when(trackingProvider.supportsCarrier("canada-post")).thenReturn(true);
         when(deliveryTrackingEventRepository.existsByDeliveryAttempt_IdAndEventKey(eq(attempt.getId()), any()))
@@ -184,18 +214,21 @@ class TrackingSyncServiceTest {
                         Instant.parse("2026-05-06T11:30:00Z"),
                         "{\"status\":\"delivered\"}"));
 
-        int syncedCount = trackingSyncService.syncRegisteredMailTracking();
+        boolean synced = trackingSyncService.processTrackingSync(event(attempt));
 
-        assertThat(syncedCount).isEqualTo(1);
+        assertThat(synced).isTrue();
         verify(deliveryTrackingEventRepository, never()).save(any(DeliveryTrackingEvent.class));
     }
 
     @Test
-    void syncRegisteredMailTrackingCapsRawPayload() {
+    void processTrackingSyncCapsRawPayload() {
         trackingSyncService = new TrackingSyncService(
                 deliveryAttemptRepository,
                 deliveryTrackingEventRepository,
+                evidenceDocumentRepository,
+                documentStorageService,
                 new TrackingProviderRegistry(List.of(trackingProvider)),
+                trackingEventPublisher,
                 new org.springframework.beans.factory.support.StaticListableBeanFactory()
                         .getBeanProvider(io.micrometer.core.instrument.MeterRegistry.class),
                 new NoopTransactionManager(),
@@ -210,11 +243,6 @@ class TrackingSyncServiceTest {
         DeliveryEvidence evidence = evidence(attempt, "RN123456789CA", "canada-post");
         attempt.setEvidence(evidence);
 
-        when(deliveryAttemptRepository.findTrackingSyncCandidateIds(
-                eq(DeliveryMethod.REGISTERED_MAIL),
-                org.mockito.ArgumentMatchers.<Collection<DeliveryAttemptStatus>>any(),
-                any()))
-                .thenReturn(List.of(attempt.getId()));
         when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
         when(trackingProvider.supportsCarrier("canada-post")).thenReturn(true);
         when(deliveryTrackingEventRepository.existsByDeliveryAttempt_IdAndEventKey(eq(attempt.getId()), any()))
@@ -228,10 +256,47 @@ class TrackingSyncServiceTest {
                         Instant.parse("2026-05-06T11:30:00Z"),
                         "012345678901234567890123456789"));
 
-        trackingSyncService.syncRegisteredMailTracking();
+        trackingSyncService.processTrackingSync(event(attempt));
 
         assertThat(evidence.getLatestTrackingRawPayload()).hasSize(20);
         assertThat(evidence.getLatestTrackingRawPayload()).endsWith("[truncated]");
+    }
+
+    @Test
+    void processDeliveryConfirmationCertificateStoresSystemGeneratedEvidenceDocument() {
+        DeliveryAttempt attempt = registeredMailAttempt();
+        DeliveryEvidence evidence = evidence(attempt, "RN123DELIVEREDCA", "canada-post");
+        attempt.setEvidence(evidence);
+        byte[] pdf = "%PDF-1.4".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        when(trackingProvider.supportsCarrier("canada-post")).thenReturn(true);
+        when(trackingProvider.fetchDeliveryConfirmationCertificate("RN123DELIVEREDCA"))
+                .thenReturn(Optional.of(new DeliveryConfirmationCertificate(
+                        "RN123DELIVEREDCA.pdf",
+                        "application/pdf",
+                        pdf)));
+        when(deliveryAttemptRepository.findById(attempt.getId())).thenReturn(Optional.of(attempt));
+        when(evidenceDocumentRepository.existsByDeliveryAttempt_IdAndDocumentType(
+                attempt.getId(),
+                EvidenceDocumentType.DELIVERY_CONFIRMATION))
+                .thenReturn(false);
+        when(documentStorageService.store(any()))
+                .thenReturn(new StoredDocument(
+                        "s3",
+                        "evidence-documents/RN123DELIVEREDCA.pdf",
+                        "abc123",
+                        pdf.length));
+
+        boolean stored = trackingSyncService.processDeliveryConfirmationCertificate(certificateEvent(attempt));
+
+        assertThat(stored).isTrue();
+        assertThat(evidence.getDeliveryConfirmation()).isTrue();
+        assertThat(evidence.getDeliveryConfirmationMetadata())
+                .isEqualTo("evidence-documents/RN123DELIVEREDCA.pdf");
+        ArgumentCaptor<EvidenceDocument> documentCaptor = ArgumentCaptor.forClass(EvidenceDocument.class);
+        verify(evidenceDocumentRepository).save(documentCaptor.capture());
+        assertThat(documentCaptor.getValue().getDocumentType()).isEqualTo(EvidenceDocumentType.DELIVERY_CONFIRMATION);
+        assertThat(documentCaptor.getValue().getUploadedByUserId()).isNull();
     }
 
     private DeliveryAttempt registeredMailAttempt() {
@@ -254,6 +319,26 @@ class TrackingSyncServiceTest {
         evidence.setTrackingNumber(trackingNumber);
         evidence.setCarrierCode(carrierCode);
         return evidence;
+    }
+
+    private TrackingSyncRequested event(DeliveryAttempt attempt) {
+        return new TrackingSyncRequested(
+                UUID.randomUUID(),
+                Instant.now(clock),
+                attempt.getId(),
+                attempt.getEvidence().getCarrierCode(),
+                attempt.getEvidence().getTrackingNumber(),
+                1);
+    }
+
+    private DeliveryConfirmationCertificateRequested certificateEvent(DeliveryAttempt attempt) {
+        return new DeliveryConfirmationCertificateRequested(
+                UUID.randomUUID(),
+                Instant.now(clock),
+                attempt.getId(),
+                attempt.getEvidence().getCarrierCode(),
+                attempt.getEvidence().getTrackingNumber(),
+                1);
     }
 
     private static class NoopTransactionManager extends AbstractPlatformTransactionManager {

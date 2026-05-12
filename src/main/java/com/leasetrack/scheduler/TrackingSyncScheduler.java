@@ -15,6 +15,6 @@ public class TrackingSyncScheduler {
 
     @Scheduled(fixedDelayString = "${app.schedulers.tracking.fixed-delay-ms}")
     public void syncTracking() {
-        trackingSyncService.syncRegisteredMailTracking();
+        trackingSyncService.enqueueRegisteredMailTracking();
     }
 }

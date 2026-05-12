@@ -4,6 +4,7 @@ import java.io.StringReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -78,7 +79,8 @@ public class CanadaPostTrackingProvider implements TrackingProvider, org.springf
         try {
             String response = restClient.get()
                     .uri("/vis/track/pin/{pin}/summary", trackingNumber)
-                    .accept(MediaType.APPLICATION_XML)
+                    .accept(MediaType.valueOf("application/vnd.cpc.track-v2+xml"))
+                    .header("Accept-language", "en-CA")
                     .headers(headers -> headers.setBasicAuth(username, password))
                     .retrieve()
                     .body(String.class);
@@ -98,11 +100,41 @@ public class CanadaPostTrackingProvider implements TrackingProvider, org.springf
         }
     }
 
+    @Override
+    public Optional<DeliveryConfirmationCertificate> fetchDeliveryConfirmationCertificate(String trackingNumber) {
+        requireConfigured();
+        try {
+            String response = restClient.get()
+                    .uri("/vis/certificate/{pin}", trackingNumber)
+                    .accept(MediaType.valueOf("application/vnd.cpc.track-v2+xml"))
+                    .header("Accept-language", "en-CA")
+                    .headers(headers -> headers.setBasicAuth(username, password))
+                    .retrieve()
+                    .body(String.class);
+            return Optional.of(parseDeliveryConfirmationCertificate(trackingNumber, response));
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 404) {
+                return Optional.empty();
+            }
+            throw TrackingProviderHttpErrors.classify("Canada Post", ex);
+        } catch (ResourceAccessException ex) {
+            throw TrackingProviderHttpErrors.timeout("Canada Post", ex);
+        } catch (TrackingProviderException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new TrackingProviderException(
+                    TrackingProviderErrorType.PERMANENT,
+                    "Canada Post delivery confirmation certificate lookup failed",
+                    ex);
+        }
+    }
+
     private Optional<String> fetchDetails(String trackingNumber) {
         try {
             return Optional.ofNullable(restClient.get()
                     .uri("/vis/track/pin/{pin}/detail", trackingNumber)
-                    .accept(MediaType.APPLICATION_XML)
+                    .accept(MediaType.valueOf("application/vnd.cpc.track-v2+xml"))
+                    .header("Accept-language", "en-CA")
                     .headers(headers -> headers.setBasicAuth(username, password))
                     .retrieve()
                     .body(String.class));
@@ -112,6 +144,22 @@ public class CanadaPostTrackingProvider implements TrackingProvider, org.springf
             }
             throw ex;
         }
+    }
+
+    private DeliveryConfirmationCertificate parseDeliveryConfirmationCertificate(String trackingNumber, String xml) {
+        Document document = parseXml(xml);
+        String filename = firstText(document, "filename")
+                .filter(value -> !value.isBlank())
+                .orElse(trackingNumber + "-delivery-confirmation.pdf");
+        String contentType = firstText(document, "mime-type")
+                .filter(value -> !value.isBlank())
+                .orElse(MediaType.APPLICATION_PDF_VALUE);
+        String encodedImage = firstText(document, "image")
+                .orElseThrow(() -> new TrackingProviderException(
+                        TrackingProviderErrorType.PARSE_ERROR,
+                        "Canada Post delivery confirmation certificate response did not include image content"));
+        byte[] content = Base64.getMimeDecoder().decode(encodedImage);
+        return new DeliveryConfirmationCertificate(filename, contentType, content);
     }
 
     private TrackingSummary parseSummary(String trackingNumber, String xml, String detailsXml) {

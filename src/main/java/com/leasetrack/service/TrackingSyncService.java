@@ -3,11 +3,21 @@ package com.leasetrack.service;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.DeliveryTrackingEvent;
+import com.leasetrack.domain.entity.EvidenceDocument;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
 import com.leasetrack.domain.enums.DeliveryMethod;
+import com.leasetrack.domain.enums.EvidenceDocumentType;
 import com.leasetrack.domain.enums.TrackingSyncStatus;
+import com.leasetrack.event.model.DeliveryConfirmationCertificateRequested;
+import com.leasetrack.event.model.TrackingSyncRequested;
+import com.leasetrack.event.publisher.TrackingEventPublisher;
 import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryTrackingEventRepository;
+import com.leasetrack.repository.EvidenceDocumentRepository;
+import com.leasetrack.storage.DocumentStorageRequest;
+import com.leasetrack.storage.DocumentStorageService;
+import com.leasetrack.storage.StoredDocument;
+import com.leasetrack.tracking.DeliveryConfirmationCertificate;
 import com.leasetrack.tracking.TrackingProvider;
 import com.leasetrack.tracking.TrackingProviderErrorType;
 import com.leasetrack.tracking.TrackingProviderException;
@@ -15,6 +25,7 @@ import com.leasetrack.tracking.TrackingProviderRegistry;
 import com.leasetrack.tracking.TrackingEvent;
 import com.leasetrack.tracking.TrackingSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,7 +49,10 @@ public class TrackingSyncService {
 
     private final DeliveryAttemptRepository deliveryAttemptRepository;
     private final DeliveryTrackingEventRepository deliveryTrackingEventRepository;
+    private final EvidenceDocumentRepository evidenceDocumentRepository;
+    private final DocumentStorageService documentStorageService;
     private final TrackingProviderRegistry trackingProviderRegistry;
+    private final TrackingEventPublisher trackingEventPublisher;
     private final Optional<MeterRegistry> meterRegistry;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
@@ -52,7 +66,10 @@ public class TrackingSyncService {
     public TrackingSyncService(
             DeliveryAttemptRepository deliveryAttemptRepository,
             DeliveryTrackingEventRepository deliveryTrackingEventRepository,
+            EvidenceDocumentRepository evidenceDocumentRepository,
+            DocumentStorageService documentStorageService,
             TrackingProviderRegistry trackingProviderRegistry,
+            TrackingEventPublisher trackingEventPublisher,
             ObjectProvider<MeterRegistry> meterRegistryProvider,
             PlatformTransactionManager transactionManager,
             Clock clock,
@@ -64,7 +81,10 @@ public class TrackingSyncService {
             @Value("${app.tracking.sync.max-raw-payload-chars:65536}") int maxRawPayloadChars) {
         this.deliveryAttemptRepository = deliveryAttemptRepository;
         this.deliveryTrackingEventRepository = deliveryTrackingEventRepository;
+        this.evidenceDocumentRepository = evidenceDocumentRepository;
+        this.documentStorageService = documentStorageService;
         this.trackingProviderRegistry = trackingProviderRegistry;
+        this.trackingEventPublisher = trackingEventPublisher;
         this.meterRegistry = Optional.ofNullable(meterRegistryProvider.getIfAvailable());
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -76,13 +96,13 @@ public class TrackingSyncService {
         this.maxRawPayloadChars = maxRawPayloadChars;
     }
 
-    public int syncRegisteredMailTracking() {
+    public int enqueueRegisteredMailTracking() {
         List<UUID> attemptIds = deliveryAttemptRepository.findTrackingSyncCandidateIds(
                 DeliveryMethod.REGISTERED_MAIL,
                 EnumSet.of(DeliveryAttemptStatus.PENDING, DeliveryAttemptStatus.SENT),
                 Instant.now(clock));
 
-        int syncedCount = 0;
+        int enqueuedCount = 0;
         for (UUID attemptId : attemptIds) {
             Optional<TrackingSyncCandidate> candidate = transactionTemplate.execute(status -> loadCandidate(attemptId));
             if (candidate == null || candidate.isEmpty()) {
@@ -90,24 +110,75 @@ public class TrackingSyncService {
             }
 
             TrackingSyncCandidate trackingCandidate = candidate.get();
-            Optional<TrackingProvider> provider = trackingProviderRegistry.findByCarrier(trackingCandidate.carrierCode());
-            if (provider.isEmpty()) {
-                transactionTemplate.executeWithoutResult(status -> markNotApplicable(trackingCandidate.attemptId()));
-                recordOutcome("unsupported_carrier", trackingCandidate.carrierCode(), trackingCandidate.attemptId(), null);
-                continue;
-            }
-
-            try {
-                TrackingSummary summary = provider.get().track(trackingCandidate.trackingNumber());
-                transactionTemplate.executeWithoutResult(status -> applySuccess(trackingCandidate.attemptId(), summary));
-                recordOutcome(summary.delivered() ? "delivered" : "success", trackingCandidate.carrierCode(), trackingCandidate.attemptId(), null);
-                syncedCount++;
-            } catch (RuntimeException ex) {
-                transactionTemplate.executeWithoutResult(status -> applyFailure(trackingCandidate, ex));
-                recordOutcome(outcomeFor(ex), trackingCandidate.carrierCode(), trackingCandidate.attemptId(), ex);
-            }
+            trackingEventPublisher.publishTrackingSyncRequested(
+                    trackingCandidate.attemptId(),
+                    trackingCandidate.carrierCode(),
+                    trackingCandidate.trackingNumber());
+            enqueuedCount++;
         }
-        return syncedCount;
+        return enqueuedCount;
+    }
+
+    public int syncRegisteredMailTracking() {
+        return enqueueRegisteredMailTracking();
+    }
+
+    public boolean processTrackingSync(TrackingSyncRequested event) {
+        TrackingSyncCandidate trackingCandidate = new TrackingSyncCandidate(
+                event.deliveryAttemptId(),
+                event.carrierCode(),
+                event.trackingNumber());
+        Optional<TrackingProvider> provider = trackingProviderRegistry.findByCarrier(trackingCandidate.carrierCode());
+        if (provider.isEmpty()) {
+            transactionTemplate.executeWithoutResult(status -> markNotApplicable(trackingCandidate.attemptId()));
+            recordOutcome("unsupported_carrier", trackingCandidate.carrierCode(), trackingCandidate.attemptId(), null);
+            return false;
+        }
+
+        try {
+            TrackingSummary summary = provider.get().track(trackingCandidate.trackingNumber());
+            transactionTemplate.executeWithoutResult(status -> applySuccess(trackingCandidate.attemptId(), summary));
+            recordOutcome(
+                    summary.delivered() ? "delivered" : "success",
+                    trackingCandidate.carrierCode(),
+                    trackingCandidate.attemptId(),
+                    null);
+            if (summary.delivered()) {
+                trackingEventPublisher.publishDeliveryConfirmationCertificateRequested(
+                        trackingCandidate.attemptId(),
+                        trackingCandidate.carrierCode(),
+                        trackingCandidate.trackingNumber());
+            }
+            return true;
+        } catch (RuntimeException ex) {
+            transactionTemplate.executeWithoutResult(status -> applyFailure(trackingCandidate, ex));
+            recordOutcome(outcomeFor(ex), trackingCandidate.carrierCode(), trackingCandidate.attemptId(), ex);
+            return false;
+        }
+    }
+
+    public boolean processDeliveryConfirmationCertificate(DeliveryConfirmationCertificateRequested event) {
+        Optional<TrackingProvider> provider = trackingProviderRegistry.findByCarrier(event.carrierCode());
+        if (provider.isEmpty()) {
+            recordOutcome("unsupported_certificate_carrier", event.carrierCode(), event.deliveryAttemptId(), null);
+            return false;
+        }
+
+        try {
+            Optional<DeliveryConfirmationCertificate> certificate =
+                    provider.get().fetchDeliveryConfirmationCertificate(event.trackingNumber());
+            if (certificate.isEmpty()) {
+                recordOutcome("certificate_unavailable", event.carrierCode(), event.deliveryAttemptId(), null);
+                return false;
+            }
+            transactionTemplate.executeWithoutResult(
+                    status -> storeDeliveryConfirmationCertificate(event.deliveryAttemptId(), certificate.get()));
+            recordOutcome("certificate_stored", event.carrierCode(), event.deliveryAttemptId(), null);
+            return true;
+        } catch (RuntimeException ex) {
+            recordOutcome(outcomeFor(ex), event.carrierCode(), event.deliveryAttemptId(), ex);
+            return false;
+        }
     }
 
     private Optional<TrackingSyncCandidate> loadCandidate(UUID attemptId) {
@@ -138,6 +209,53 @@ public class TrackingSyncService {
         evidence.setLatestTrackingProviderError(null);
         saveTrackingEvents(attempt, summary, null);
         attempt.setTrackingSyncStatus(TrackingSyncStatus.SUCCESS);
+    }
+
+    private void storeDeliveryConfirmationCertificate(
+            UUID attemptId,
+            DeliveryConfirmationCertificate certificate) {
+        DeliveryAttempt attempt = deliveryAttemptRepository.findById(attemptId)
+                .orElseThrow(() -> new IllegalArgumentException("Delivery attempt not found"));
+        DeliveryEvidence evidence = attempt.getEvidence();
+        if (evidence == null) {
+            throw new IllegalStateException("Delivery attempt does not have delivery evidence");
+        }
+        if (StringUtils.hasText(evidence.getDeliveryConfirmationMetadata())
+                || evidenceDocumentRepository.existsByDeliveryAttempt_IdAndDocumentType(
+                        attemptId,
+                        EvidenceDocumentType.DELIVERY_CONFIRMATION)) {
+            return;
+        }
+
+        Instant now = Instant.now(clock);
+        UUID documentId = UUID.randomUUID();
+        StoredDocument storedDocument = documentStorageService.store(new DocumentStorageRequest(
+                attempt.getNotice().getId(),
+                attempt.getId(),
+                documentId,
+                certificate.filename(),
+                certificate.contentType(),
+                new ByteArrayInputStream(certificate.content())));
+
+        evidence.setDeliveryConfirmation(true);
+        evidence.setDeliveryConfirmationMetadata(storedDocument.storageKey());
+        evidence.setUpdatedAt(now);
+
+        EvidenceDocument document = new EvidenceDocument();
+        document.setId(documentId);
+        document.setNoticeId(attempt.getNotice().getId());
+        document.setDeliveryAttempt(attempt);
+        document.setDeliveryEvidence(evidence);
+        document.setDocumentType(EvidenceDocumentType.DELIVERY_CONFIRMATION);
+        document.setOriginalFilename(certificate.filename());
+        document.setContentType(certificate.contentType());
+        document.setSizeBytes(storedDocument.sizeBytes());
+        document.setStorageProvider(storedDocument.storageProvider());
+        document.setStorageKey(storedDocument.storageKey());
+        document.setSha256Checksum(storedDocument.sha256Checksum());
+        document.setUploadedByUserId(null);
+        document.setCreatedAt(now);
+        evidenceDocumentRepository.save(document);
     }
 
     private void applyFailure(TrackingSyncCandidate candidate, RuntimeException ex) {
@@ -301,7 +419,7 @@ public class TrackingSyncService {
     }
 
     private TrackingSyncStatus statusForOutcome(String outcome) {
-        if (outcome.equals("delivered") || outcome.equals("success")) {
+        if (outcome.equals("delivered") || outcome.equals("success") || outcome.equals("certificate_stored")) {
             return TrackingSyncStatus.SUCCESS;
         }
         if (outcome.equals("unsupported_carrier")) {
