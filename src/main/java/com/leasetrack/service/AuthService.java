@@ -86,7 +86,7 @@ public class AuthService {
         if (userCount == 0 && request.role() != UserRole.ADMIN) {
             throw new UserRegistrationException("The first registered user must be an admin");
         }
-        if (userCount > 0 && (request.role() == UserRole.ADMIN || request.role() == UserRole.TENANT)) {
+        if (userCount > 0 && request.role() != UserRole.LANDLORD) {
             throw new UserRegistrationException("This role requires an invitation");
         }
 
