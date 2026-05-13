@@ -57,9 +57,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
                         .permitAll()
-                        .requestMatchers("/api/leases/**", "/api/notices/**")
-                        .authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/invitations")
+                        // All other /api/** routes require a valid JWT (avoids forgetting new controllers).
+                        .requestMatchers("/api/**")
                         .authenticated()
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

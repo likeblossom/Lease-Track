@@ -31,6 +31,7 @@ export type AuditEventType =
   | "EVIDENCE_DOCUMENT_UPLOADED"
   | "EVIDENCE_PACKAGE_GENERATED"
   | "DEADLINE_APPROACHING_PUBLISHED";
+export type UnitStatus = "OCCUPIED" | "VACANT" | "NOTICE_PENDING" | "MAINTENANCE" | "OFF_MARKET";
 
 export interface ApiErrorResponse {
   timestamp?: string;
@@ -96,6 +97,82 @@ export interface CreateLeaseRequest {
   leaseStartDate: string;
   leaseEndDate: string;
   notes?: string | null;
+}
+
+export interface CreatePropertyRequest {
+  name: string;
+  addressLine1: string;
+  addressLine2?: string | null;
+  city: string;
+  province: string;
+  postalCode: string;
+  country?: string | null;
+  notes?: string | null;
+}
+
+export interface CreatePropertyUnitRequest {
+  unitLabel: string;
+  status: UnitStatus;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  squareFeet?: number | null;
+  currentTenantNames?: string | null;
+  currentRentCents?: number | null;
+}
+
+export interface PropertySummaryResponse {
+  id: string;
+  name: string;
+  address: string;
+  unitCount: number;
+  occupiedUnitCount: number;
+  occupancyRate: number;
+  activeNoticeCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PropertyUnitResponse {
+  id: string;
+  propertyId: string;
+  unitLabel: string;
+  status: UnitStatus;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  squareFeet?: number | null;
+  currentTenantNames?: string | null;
+  currentRentCents?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PropertyResponse {
+  id: string;
+  name: string;
+  addressLine1: string;
+  addressLine2?: string | null;
+  city: string;
+  /** Canadian province or equivalent. */
+  province?: string | null;
+  /** Legacy field name; some API versions return this instead of `province`. */
+  region?: string | null;
+  postalCode: string;
+  country: string;
+  ownerUserId: string;
+  notes?: string | null;
+  unitCount: number;
+  occupiedUnitCount: number;
+  vacantUnitCount: number;
+  activeNoticeCount: number;
+  occupancyRate: number;
+  createdAt: string;
+  updatedAt: string;
+  units: PropertyUnitResponse[];
+}
+
+/** Province value whether the API sends `province` or legacy `region`. */
+export function propertyProvinceText(property: Pick<PropertyResponse, "province" | "region">): string {
+  return (property.province ?? property.region ?? "").trim();
 }
 
 export interface LeaseSummaryResponse {
@@ -324,6 +401,29 @@ export class ApiClient {
     return this.request(`/api/leases${queryString(params)}`);
   }
 
+  listProperties(params: { q?: string; page?: number; size?: number; sort?: string } = {}): Promise<PageResponse<PropertySummaryResponse>> {
+    return this.request(`/api/properties${queryString(params)}`);
+  }
+
+  createProperty(request: CreatePropertyRequest): Promise<PropertyResponse> {
+    // Older backends expect `region`; current API uses `province`. Send both until all environments run the latest API.
+    return this.request("/api/properties", {
+      method: "POST",
+      body: JSON.stringify({ ...request, region: request.province })
+    });
+  }
+
+  getProperty(propertyId: string): Promise<PropertyResponse> {
+    return this.request(`/api/properties/${encodeURIComponent(propertyId)}`);
+  }
+
+  createPropertyUnit(propertyId: string, request: CreatePropertyUnitRequest): Promise<PropertyUnitResponse> {
+    return this.request(`/api/properties/${encodeURIComponent(propertyId)}/units`, {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
   createLease(request: CreateLeaseRequest): Promise<LeaseResponse> {
     return this.request("/api/leases", {
       method: "POST",
@@ -476,7 +576,7 @@ function errorMessageForResponse(response: Response, details?: ApiErrorResponse)
     return details.message;
   }
   if (response.status === 401 || response.status === 403) {
-    return "Your session is not authorized for this action. Log out, then sign in again with a landlord, property manager, or admin account.";
+    return "Your session is not authorized for this action. Log out and sign in again.";
   }
   return response.statusText || `Request failed with status ${response.status}`;
 }

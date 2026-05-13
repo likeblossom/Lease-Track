@@ -30,11 +30,14 @@ import {
   LeaseSummaryResponse,
   NoticeResponse,
   NoticeSummaryResponse,
-  NoticeType
+  NoticeType,
+  PropertyResponse,
+  PropertySummaryResponse
 } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
-import { AppShell } from "./components/layout/AppShell";
+import { AppShell, type WorkspacePage } from "./components/layout/AppShell";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { CreatePropertyFormValue, CreateUnitFormValue, PropertiesPage } from "./features/properties/PropertiesPage";
 
 interface TenantNameInput {
   firstName: string;
@@ -183,7 +186,7 @@ function RegisterForm() {
       <FormHeader
         icon={<UserPlus aria-hidden="true" size={20} />}
         title="Create your account"
-        description="For people managing lease notices, delivery evidence, and compliance records."
+        description="For landlords and property managers managing leases, notices, evidence, and compliance records."
       />
       <Field label="Display name" htmlFor="register-name">
         <input
@@ -231,7 +234,10 @@ function RegisterForm() {
 function Workspace() {
   const { api, user, logout } = useAuth();
   const initials = useMemo(() => initialsFor(user?.displayName ?? user?.email ?? "Lease Track"), [user]);
+  const [activePage, setActivePage] = useState<WorkspacePage>(() => workspacePageFromHash());
   const [leases, setLeases] = useState<LeaseSummaryResponse[]>([]);
+  const [properties, setProperties] = useState<PropertySummaryResponse[]>([]);
+  const [selectedProperty, setSelectedProperty] = useState<PropertyResponse | null>(null);
   const [selectedLease, setSelectedLease] = useState<LeaseResponse | null>(null);
   const [tenantNameInputs, setTenantNameInputs] = useState<TenantNameInput[]>([{ firstName: "", lastName: "" }]);
   const [notices, setNotices] = useState<NoticeSummaryResponse[]>([]);
@@ -244,11 +250,30 @@ function Workspace() {
 
   const selectedAttempt = selectedNotice?.deliveryAttempts[0] ?? null;
 
+  const navigateWorkspace = useCallback((page: WorkspacePage) => {
+    window.history.pushState({}, "", `#${page}`);
+    setActivePage(page);
+  }, []);
+
   const refreshLeases = useCallback(async () => {
     const page = await api.listLeases({ size: 50 });
     setLeases(page.content);
     return page.content;
   }, [api]);
+
+  const refreshProperties = useCallback(async (query?: string) => {
+    const page = await api.listProperties({ q: query, size: 50 });
+    setProperties(page.content);
+    return page.content;
+  }, [api]);
+
+  const loadProperty = useCallback(async (propertyId: string) => {
+    setStatus({ kind: "loading", message: "Loading property..." });
+    const property = await api.getProperty(propertyId);
+    setSelectedProperty(property);
+    setStatus({ kind: "idle", message: "" });
+    return property;
+  }, [api, setStatus]);
 
   const refreshNotices = useCallback(async () => {
     const page = await api.listNotices({ leaseId: selectedLease?.id, size: 50 });
@@ -309,10 +334,93 @@ function Workspace() {
     }
   }, [loadLease, refreshLeases, selectedLease, setStatus]);
 
+  async function onSearchProperties(query: string) {
+    setStatus({ kind: "loading", message: "Searching properties..." });
+    try {
+      const nextProperties = await refreshProperties(query);
+      if (nextProperties[0]) {
+        await loadProperty(nextProperties[0].id);
+      } else {
+        setSelectedProperty(null);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onRefreshProperties() {
+    setStatus({ kind: "loading", message: "Refreshing properties..." });
+    try {
+      const nextProperties = await refreshProperties();
+      if (selectedProperty) {
+        await loadProperty(selectedProperty.id);
+      } else if (nextProperties[0]) {
+        await loadProperty(nextProperties[0].id);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onSelectProperty(propertyId: string) {
+    try {
+      await loadProperty(propertyId);
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onCreateProperty(request: CreatePropertyFormValue) {
+    setStatus({ kind: "loading", message: "Creating property..." });
+    try {
+      const property = await api.createProperty(request);
+      await refreshProperties();
+      await loadProperty(property.id);
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onCreateUnit(propertyId: string, request: CreateUnitFormValue) {
+    setStatus({ kind: "loading", message: "Creating unit..." });
+    try {
+      await api.createPropertyUnit(propertyId, request);
+      await refreshProperties();
+      await loadProperty(propertyId);
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
   useEffect(() => {
     refreshWorkspace();
     // Run once on authenticated mount; subsequent refreshes are user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (activePage === "properties" && properties.length === 0) {
+      onRefreshProperties();
+    }
+    // Load the property module only when its page is visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage]);
+
+  useEffect(() => {
+    function syncHash() {
+      setActivePage(workspacePageFromHash());
+    }
+
+    window.addEventListener("hashchange", syncHash);
+    window.addEventListener("popstate", syncHash);
+    return () => {
+      window.removeEventListener("hashchange", syncHash);
+      window.removeEventListener("popstate", syncHash);
+    };
   }, []);
 
   async function onCreateLease(event: FormEvent<HTMLFormElement>) {
@@ -475,17 +583,50 @@ function Workspace() {
   }
 
   return (
-    <AppShell initials={initials} title="Lease operations" user={user} onLogout={logout}>
-        <DashboardPage
+    <AppShell
+      activePage={activePage}
+      initials={initials}
+      title={titleForWorkspacePage(activePage)}
+      user={user}
+      onNavigate={navigateWorkspace}
+      onLogout={logout}
+    >
+        {activePage === "dashboard" ? (
+          <DashboardPage
           auditEvents={auditEvents}
           documents={documents}
           leases={leases}
           notices={notices}
           user={user}
         />
+        ) : null}
 
         <StatusMessage status={status} />
+        {activePage === "properties" ? (
+          <PropertiesPage
+          properties={properties}
+          selectedProperty={selectedProperty}
+          onCreateProperty={onCreateProperty}
+          onCreateUnit={onCreateUnit}
+          onRefresh={onRefreshProperties}
+          onSearch={onSearchProperties}
+          onSelectProperty={onSelectProperty}
+        />
+        ) : null}
+        {activePage !== "dashboard" && activePage !== "properties" ? (
+          <WorkspacePlaceholder page={activePage} />
+        ) : null}
     </AppShell>
+  );
+}
+
+function WorkspacePlaceholder({ page }: { page: WorkspacePage }) {
+  return (
+    <section className="workspace-panel route-placeholder">
+      <Building2 aria-hidden="true" size={28} />
+      <h2>{titleForWorkspacePage(page)}</h2>
+      <p>This module will be connected in a later phase.</p>
+    </section>
   );
 }
 
@@ -1003,6 +1144,46 @@ function initialsFor(value: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+const WORKSPACE_PAGES: WorkspacePage[] = [
+  "dashboard",
+  "properties",
+  "leases",
+  "tenants",
+  "notices",
+  "evidence-vault",
+  "calendar",
+  "analytics",
+  "settings"
+];
+
+function workspacePageFromHash(): WorkspacePage {
+  const hash = window.location.hash.replace("#", "");
+  return WORKSPACE_PAGES.includes(hash as WorkspacePage) ? (hash as WorkspacePage) : "dashboard";
+}
+
+function titleForWorkspacePage(page: WorkspacePage) {
+  switch (page) {
+    case "dashboard":
+      return "Lease operations";
+    case "properties":
+      return "Properties";
+    case "leases":
+      return "Leases";
+    case "tenants":
+      return "Tenants";
+    case "notices":
+      return "Notices";
+    case "evidence-vault":
+      return "Evidence Vault";
+    case "calendar":
+      return "Calendar";
+    case "analytics":
+      return "Analytics";
+    case "settings":
+      return "Settings";
+  }
 }
 
 function errorMessage(error: unknown) {
