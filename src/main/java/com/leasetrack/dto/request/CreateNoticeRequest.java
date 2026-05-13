@@ -12,6 +12,7 @@ public record CreateNoticeRequest(
         @NotBlank String recipientContactInfo,
         @NotNull NoticeType noticeType,
         @NotNull DeliveryMethod deliveryMethod,
+        UUID leaseId,
         UUID tenantUserId,
         Instant deadlineAt,
         String notes) {

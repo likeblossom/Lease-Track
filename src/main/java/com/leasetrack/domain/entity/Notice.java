@@ -8,6 +8,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -42,6 +45,10 @@ public class Notice {
 
     @Column(name = "tenant_user_id")
     private UUID tenantUserId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lease_id")
+    private Lease lease;
 
     @Column(columnDefinition = "text")
     private String notes;
@@ -113,6 +120,14 @@ public class Notice {
 
     public void setTenantUserId(UUID tenantUserId) {
         this.tenantUserId = tenantUserId;
+    }
+
+    public Lease getLease() {
+        return lease;
+    }
+
+    public void setLease(Lease lease) {
+        this.lease = lease;
     }
 
     public String getNotes() {

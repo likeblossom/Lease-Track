@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record NoticeSummaryResponse(
         UUID id,
+        UUID leaseId,
         String recipientName,
         NoticeType noticeType,
         NoticeStatus status,

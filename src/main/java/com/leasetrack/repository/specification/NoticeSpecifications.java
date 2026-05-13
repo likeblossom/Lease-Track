@@ -68,6 +68,12 @@ public final class NoticeSpecifications {
         };
     }
 
+    public static Specification<Notice> hasLeaseId(UUID leaseId) {
+        return (root, query, criteriaBuilder) -> leaseId == null
+                ? criteriaBuilder.conjunction()
+                : criteriaBuilder.equal(root.get("lease").get("id"), leaseId);
+    }
+
     public static Specification<Notice> accessibleTo(UUID userId, UserRole role) {
         return (root, query, criteriaBuilder) -> switch (role) {
             case ADMIN -> criteriaBuilder.conjunction();

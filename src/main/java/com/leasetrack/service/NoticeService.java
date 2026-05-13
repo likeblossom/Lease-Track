@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leasetrack.domain.entity.DeliveryEvidence;
 import com.leasetrack.domain.entity.DeliveryAttempt;
 import com.leasetrack.domain.entity.EvidencePackageSnapshot;
+import com.leasetrack.domain.entity.Lease;
 import com.leasetrack.domain.entity.Notice;
 import com.leasetrack.domain.entity.User;
 import com.leasetrack.domain.enums.DeliveryAttemptStatus;
@@ -36,6 +37,7 @@ import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.repository.EvidencePackageSnapshotRepository;
+import com.leasetrack.repository.LeaseRepository;
 import com.leasetrack.repository.UserRepository;
 import com.leasetrack.repository.specification.NoticeSpecifications;
 import com.leasetrack.tracking.TrackingInput;
@@ -79,6 +81,7 @@ public class NoticeService {
     private final NoticeMapper noticeMapper;
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
+    private final LeaseRepository leaseRepository;
     private final ObjectMapper objectMapper;
     private final TrackingProviderRegistry trackingProviderRegistry;
     private final Clock clock;
@@ -96,6 +99,7 @@ public class NoticeService {
             NoticeMapper noticeMapper,
             CurrentUserService currentUserService,
             UserRepository userRepository,
+            LeaseRepository leaseRepository,
             ObjectMapper objectMapper,
             TrackingProviderRegistry trackingProviderRegistry,
             Clock clock) {
@@ -111,6 +115,7 @@ public class NoticeService {
         this.noticeMapper = noticeMapper;
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
+        this.leaseRepository = leaseRepository;
         this.objectMapper = objectMapper;
         this.trackingProviderRegistry = trackingProviderRegistry;
         this.clock = clock;
@@ -129,6 +134,7 @@ public class NoticeService {
         notice.setNoticeType(request.noticeType());
         notice.setStatus(NoticeStatus.OPEN);
         notice.setOwnerUserId(currentUser.getId());
+        notice.setLease(validatedLease(request.leaseId(), currentUser));
         notice.setTenantUserId(validatedTenantUserId(request.tenantUserId()));
         notice.setNotes(request.notes());
         notice.setCreatedAt(now);
@@ -164,6 +170,7 @@ public class NoticeService {
             NoticeStatus status,
             NoticeType noticeType,
             DeliveryMethod deliveryMethod,
+            UUID leaseId,
             Instant deadlineAfter,
             Instant deadlineBefore,
             Pageable pageable) {
@@ -173,6 +180,7 @@ public class NoticeService {
                 NoticeSpecifications.hasDeliveryMethod(deliveryMethod),
                 NoticeSpecifications.hasDeadlineOnOrAfter(deadlineAfter),
                 NoticeSpecifications.hasDeadlineOnOrBefore(deadlineBefore),
+                NoticeSpecifications.hasLeaseId(leaseId),
                 accessibleNoticeSpecification(currentUserService.currentUser()));
 
         return noticeRepository.findAll(specification, pageable)
@@ -454,6 +462,18 @@ public class NoticeService {
             throw new AccessDeniedException("Notices can only be assigned to enabled tenant users");
         }
         return tenant.getId();
+    }
+
+    private Lease validatedLease(UUID leaseId, User currentUser) {
+        if (leaseId == null) {
+            return null;
+        }
+        Lease lease = leaseRepository.findById(leaseId)
+                .orElseThrow(() -> new AccessDeniedException("Lease does not exist"));
+        if (currentUser.getRole() == UserRole.ADMIN || currentUser.getId().equals(lease.getOwnerUserId())) {
+            return lease;
+        }
+        throw new AccessDeniedException("User cannot attach notices to this lease");
     }
 
     private void assertCanRead(User user, Notice notice) {

@@ -83,12 +83,13 @@ public class NoticeController {
             @RequestParam(required = false) NoticeStatus status,
             @RequestParam(required = false) NoticeType noticeType,
             @RequestParam(required = false) DeliveryMethod deliveryMethod,
+            @RequestParam(required = false) UUID leaseId,
             @RequestParam(required = false) Instant deadlineAfter,
             @RequestParam(required = false) Instant deadlineBefore,
             @PageableDefault(size = 20)
             @SortDefault(sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
-        return noticeService.listNotices(status, noticeType, deliveryMethod, deadlineAfter, deadlineBefore, pageable);
+        return noticeService.listNotices(status, noticeType, deliveryMethod, leaseId, deadlineAfter, deadlineBefore, pageable);
     }
 
     @PatchMapping("/{noticeId}/attempts/{attemptId}/status")

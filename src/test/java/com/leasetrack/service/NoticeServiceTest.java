@@ -35,6 +35,7 @@ import com.leasetrack.repository.DeliveryAttemptRepository;
 import com.leasetrack.repository.DeliveryEvidenceRepository;
 import com.leasetrack.repository.EvidenceDocumentRepository;
 import com.leasetrack.repository.EvidencePackageSnapshotRepository;
+import com.leasetrack.repository.LeaseRepository;
 import com.leasetrack.repository.NoticeRepository;
 import com.leasetrack.repository.DeliveryTrackingEventRepository;
 import com.leasetrack.repository.UserRepository;
@@ -94,6 +95,9 @@ class NoticeServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private LeaseRepository leaseRepository;
+
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-06T12:00:00Z"), ZoneOffset.UTC);
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final UUID landlordUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -115,6 +119,7 @@ class NoticeServiceTest {
                 noticeMapper,
                 currentUserService,
                 userRepository,
+                leaseRepository,
                 objectMapper,
                 new TrackingProviderRegistry(List.of()),
                 clock);
@@ -133,6 +138,7 @@ class NoticeServiceTest {
                 "marie@example.com",
                 NoticeType.RENT_INCREASE,
                 DeliveryMethod.REGISTERED_MAIL,
+                null,
                 tenantUserId,
                 deadlineAt,
                 "Initial notice"));
@@ -160,6 +166,7 @@ class NoticeServiceTest {
                 "marie@example.com",
                 NoticeType.RENT_INCREASE,
                 DeliveryMethod.REGISTERED_MAIL,
+                null,
                 managerUserId,
                 Instant.parse("2026-06-01T12:00:00Z"),
                 "Initial notice")))
@@ -187,6 +194,7 @@ class NoticeServiceTest {
                 NoticeStatus.OPEN,
                 NoticeType.RENT_INCREASE,
                 DeliveryMethod.REGISTERED_MAIL,
+                null,
                 null,
                 null,
                 pageable);

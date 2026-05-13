@@ -115,6 +115,7 @@ class EvidencePackagePdfServiceTest {
                 NoticeStatus.OPEN,
                 userId,
                 null,
+                null,
                 "Initial notice",
                 now.minusSeconds(10000),
                 now,

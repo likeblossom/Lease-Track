@@ -78,7 +78,7 @@ describe("App auth routes", () => {
     );
   });
 
-  it("shows bootstrap guidance when public registration is attempted before first admin setup", async () => {
+  it("surfaces backend registration errors without bootstrap copy", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -99,9 +99,104 @@ describe("App auth routes", () => {
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: "password123" } });
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "first admin account created through the bootstrap setup"
+    expect(await screen.findByRole("alert")).toHaveTextContent("The first registered user must be an admin");
+    expect(screen.queryByText(/bootstrap setup/i)).not.toBeInTheDocument();
+  });
+
+  it("loads the workspace and creates a notice", async () => {
+    window.sessionStorage.setItem("lease-track.auth-token", "workspace-token");
+    window.sessionStorage.setItem(
+      "lease-track.auth-user",
+      JSON.stringify({
+        id: "user-1",
+        displayName: "Avery Manager",
+        email: "avery@example.com",
+        role: "LANDLORD"
+      })
     );
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.endsWith("/api/leases?size=50")) {
+        return jsonResponse({
+          content: [leaseSummaryResponse()],
+          totalElements: 1,
+          totalPages: 1,
+          size: 50,
+          number: 0,
+          first: true,
+          last: true,
+          empty: false
+        });
+      }
+      if (url.endsWith("/api/leases/lease-1")) {
+        return jsonResponse(leaseResponse());
+      }
+      if (url.endsWith("/api/notices?size=50")) {
+        return jsonResponse({
+          content: [
+            {
+              id: "notice-1",
+              recipientName: "Marie Tremblay",
+              noticeType: "RENT_INCREASE",
+              status: "OPEN",
+              createdAt: "2026-05-12T10:00:00Z",
+              updatedAt: "2026-05-12T10:00:00Z"
+            }
+          ],
+          totalElements: 1,
+          totalPages: 1,
+          size: 50,
+          number: 0,
+          first: true,
+          last: true,
+          empty: false
+        });
+      }
+      if (url.endsWith("/api/notices/notice-1")) {
+        return jsonResponse(noticeResponse("notice-1", "Marie Tremblay"));
+      }
+      if (url.includes("/evidence/documents")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/audit-log")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/notices") && init?.method === "POST") {
+        return jsonResponse(noticeResponse("notice-2", "New Recipient"), 201);
+      }
+      if (url.endsWith("/api/notices/notice-2")) {
+        return jsonResponse(noticeResponse("notice-2", "New Recipient"));
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { name: "Lease operations" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Marie Tremblay")).length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Recipient"), { target: { value: "New Recipient" } });
+    fireEvent.change(screen.getByLabelText("Contact"), { target: { value: "new@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /create notice/i }));
+
+    await waitFor(() => {
+      expect(fetchImpl).toHaveBeenCalledWith(
+        expect.stringContaining("/api/notices"),
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+
+    const createCall = fetchImpl.mock.calls.find(
+      ([input, init]) => input.toString().endsWith("/api/notices") && init?.method === "POST"
+    );
+    expect(JSON.parse(createCall?.[1]?.body?.toString() ?? "{}")).toMatchObject({
+      recipientName: "New Recipient",
+      recipientContactInfo: "new@example.com",
+      noticeType: "RENT_INCREASE",
+      deliveryMethod: "REGISTERED_MAIL",
+      leaseId: "lease-1"
+    });
   });
 });
 
@@ -121,4 +216,73 @@ function jsonResponse(body: unknown, status = 200) {
       "Content-Type": "application/json"
     }
   });
+}
+
+function noticeResponse(id: string, recipientName: string) {
+  return {
+    id,
+    recipientName,
+    recipientContactInfo: "marie@example.com",
+    noticeType: "RENT_INCREASE",
+    status: "OPEN",
+    ownerUserId: "user-1",
+    leaseId: "lease-1",
+    tenantUserId: null,
+    notes: "",
+    createdAt: "2026-05-12T10:00:00Z",
+    updatedAt: "2026-05-12T10:00:00Z",
+    closedAt: null,
+    deliveryAttempts: [
+      {
+        id: "attempt-1",
+        attemptNumber: 1,
+        deliveryMethod: "REGISTERED_MAIL",
+        status: "PENDING",
+        sentAt: null,
+        deliveredAt: null,
+        deadlineAt: null,
+        trackingSyncStatus: "PENDING",
+        lastTrackingCheckedAt: null,
+        deadlineReminderSent: false,
+        createdAt: "2026-05-12T10:00:00Z",
+        updatedAt: "2026-05-12T10:00:00Z"
+      }
+    ]
+  };
+}
+
+function leaseSummaryResponse() {
+  return {
+    id: "lease-1",
+    name: "Apt 4B - Tremblay",
+    propertyAddress: "123 Rue Example",
+    tenantNames: "Marie Tremblay",
+    leaseStartDate: "2026-07-01",
+    leaseEndDate: "2027-06-30",
+    noticeCount: 1,
+    openNoticeCount: 1,
+    createdAt: "2026-05-12T10:00:00Z",
+    updatedAt: "2026-05-12T10:00:00Z"
+  };
+}
+
+function leaseResponse() {
+  return {
+    ...leaseSummaryResponse(),
+    tenantEmail: "marie@example.com",
+    tenantPhone: "514-555-0199",
+    ownerUserId: "user-1",
+    notes: "",
+    notices: [
+      {
+        id: "notice-1",
+        leaseId: "lease-1",
+        recipientName: "Marie Tremblay",
+        noticeType: "RENT_INCREASE",
+        status: "OPEN",
+        createdAt: "2026-05-12T10:00:00Z",
+        updatedAt: "2026-05-12T10:00:00Z"
+      }
+    ]
+  };
 }

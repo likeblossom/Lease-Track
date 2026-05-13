@@ -13,6 +13,7 @@ public record NoticeResponse(
         NoticeType noticeType,
         NoticeStatus status,
         UUID ownerUserId,
+        UUID leaseId,
         UUID tenantUserId,
         String notes,
         Instant createdAt,

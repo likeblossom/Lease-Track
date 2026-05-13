@@ -27,6 +27,7 @@ public class NoticeMapper {
                 notice.getNoticeType(),
                 notice.getStatus(),
                 notice.getOwnerUserId(),
+                notice.getLease() == null ? null : notice.getLease().getId(),
                 notice.getTenantUserId(),
                 notice.getNotes(),
                 notice.getCreatedAt(),
@@ -40,6 +41,7 @@ public class NoticeMapper {
     public NoticeSummaryResponse toSummaryResponse(Notice notice) {
         return new NoticeSummaryResponse(
                 notice.getId(),
+                notice.getLease() == null ? null : notice.getLease().getId(),
                 notice.getRecipientName(),
                 notice.getNoticeType(),
                 notice.getStatus(),
