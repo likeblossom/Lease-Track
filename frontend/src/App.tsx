@@ -6,7 +6,6 @@ import {
   Download,
   FileCheck2,
   FileText,
-  LogOut,
   Mail,
   PackageCheck,
   Plus,
@@ -34,6 +33,8 @@ import {
   NoticeType
 } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
+import { AppShell } from "./components/layout/AppShell";
+import { DashboardPage } from "./features/dashboard/DashboardPage";
 
 interface TenantNameInput {
   firstName: string;
@@ -474,155 +475,17 @@ function Workspace() {
   }
 
   return (
-    <main className="workspace">
-      <aside className="sidebar" aria-label="Workspace navigation">
-        <div className="sidebar-brand">
-          <div className="brand-mark small">
-            <FileCheck2 aria-hidden="true" size={20} />
-          </div>
-          <div>
-            <strong>Lease Track</strong>
-          </div>
-        </div>
-        <nav>
-          <a className="nav-item active" href="#overview">
-            Overview
-          </a>
-          <a className="nav-item" href="#leases">
-            Leases
-          </a>
-          <a className="nav-item" href="#notices">
-            Notices
-          </a>
-        </nav>
-      </aside>
-
-      <section className="workspace-main">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h1>Lease operations</h1>
-          </div>
-          <div className="account-chip">
-            <span aria-hidden="true">{initials}</span>
-            <div>
-              <strong>{user?.displayName ?? "Signed in"}</strong>
-              <small>{user?.email ?? "Authenticated session"}</small>
-            </div>
-            <button type="button" className="icon-button" onClick={logout} aria-label="Log out">
-              <LogOut aria-hidden="true" size={18} />
-            </button>
-          </div>
-        </header>
-
-        <section className="status-grid" aria-label="Workspace status">
-          <Metric label="Leases" value={String(leases.length)} />
-          <Metric label="Open notices" value={String(notices.filter((notice) => notice.status === "OPEN").length)} />
-          <Metric label="Evidence" value={evidencePackage?.strongestEvidenceStrength ?? "Pending"} />
-        </section>
+    <AppShell initials={initials} title="Lease operations" user={user} onLogout={logout}>
+        <DashboardPage
+          auditEvents={auditEvents}
+          documents={documents}
+          leases={leases}
+          notices={notices}
+          user={user}
+        />
 
         <StatusMessage status={status} />
-
-        <section className="operations-grid" id="overview">
-          <div className="workspace-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Create</p>
-                <h2>New lease</h2>
-              </div>
-            </div>
-            <form className="compact-form" onSubmit={onCreateLease}>
-              <Field label="Lease name" htmlFor="leaseName">
-                <input id="leaseName" name="leaseName" placeholder="Apt 4B - Tremblay" required />
-              </Field>
-              <Field label="Property address" htmlFor="propertyAddress">
-                <input id="propertyAddress" name="propertyAddress" required />
-              </Field>
-              <TenantNameFields tenantNames={tenantNameInputs} onChange={setTenantNameInputs} />
-              <Field label="Tenant email" htmlFor="tenantEmail">
-                <input id="tenantEmail" name="tenantEmail" type="email" />
-              </Field>
-              <Field label="Tenant phone" htmlFor="tenantPhone">
-                <input id="tenantPhone" name="tenantPhone" type="tel" />
-              </Field>
-              <Field label="Start date" htmlFor="leaseStartDate">
-                <input id="leaseStartDate" name="leaseStartDate" type="date" required />
-              </Field>
-              <Field label="End date" htmlFor="leaseEndDate">
-                <input id="leaseEndDate" name="leaseEndDate" type="date" required />
-              </Field>
-              <Field label="Notes" htmlFor="leaseNotes">
-                <textarea id="leaseNotes" name="leaseNotes" rows={3} />
-              </Field>
-              <button className="primary-action" type="submit">
-                <span>Create lease</span>
-                <ArrowRight aria-hidden="true" size={18} />
-              </button>
-            </form>
-          </div>
-
-          <div className="workspace-panel" id="leases">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Portfolio</p>
-                <h2>Leases</h2>
-              </div>
-              <button className="icon-button" type="button" onClick={refreshWorkspace} aria-label="Refresh leases">
-                <RefreshCw aria-hidden="true" size={18} />
-              </button>
-            </div>
-            <div className="notice-list" aria-label="Notice list">
-              {isLoading ? <p className="muted">Loading leases...</p> : null}
-              {!isLoading && leases.length === 0 ? <p className="muted">No leases yet.</p> : null}
-              {leases.map((lease) => (
-                <button
-                  className={`notice-row ${selectedLease?.id === lease.id ? "active" : ""}`}
-                  key={lease.id}
-                  type="button"
-                  onClick={() => loadLease(lease.id).catch((error) => setStatus({ kind: "error", message: errorMessage(error) }))}
-                >
-                  <span>
-                    <strong>{lease.name}</strong>
-                    <small>{lease.tenantNames}</small>
-                    <small>{formatDateOnly(lease.leaseStartDate)} - {formatDateOnly(lease.leaseEndDate)}</small>
-                  </span>
-                  <StatusPill value={`${lease.openNoticeCount} open`} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <section className="workspace-panel detail-panel" id="notices" aria-label="Lease notices">
-            {selectedLease ? (
-              <LeaseNoticeWorkspace
-                auditEvents={auditEvents}
-                documents={documents}
-                evidencePackage={evidencePackage}
-                isLoading={isLoading}
-                lease={selectedLease}
-                notices={notices}
-                selectedAttempt={selectedAttempt}
-                selectedNotice={selectedNotice}
-                onCreateNotice={onCreateNotice}
-                onDownloadPdf={onDownloadPdf}
-                onGeneratePackage={onGeneratePackage}
-                onLoadNotice={loadNotice}
-                onSaveEvidence={onSaveEvidence}
-                onUpdateStatus={onUpdateStatus}
-                onUploadDocument={onUploadDocument}
-                setStatus={setStatus}
-              />
-            ) : (
-              <div className="empty-state">
-                <Building2 aria-hidden="true" size={28} />
-                <h2>Select a lease</h2>
-                <p>Lease notices and evidence will appear here.</p>
-              </div>
-            )}
-          </section>
-        </section>
-      </section>
-    </main>
+    </AppShell>
   );
 }
 

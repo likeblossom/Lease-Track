@@ -103,7 +103,7 @@ describe("App auth routes", () => {
     expect(screen.queryByText(/bootstrap setup/i)).not.toBeInTheDocument();
   });
 
-  it("loads the workspace and creates a notice", async () => {
+  it("loads the workspace dashboard without legacy lease panels", async () => {
     window.sessionStorage.setItem("lease-track.auth-token", "workspace-token");
     window.sessionStorage.setItem(
       "lease-track.auth-user",
@@ -174,29 +174,37 @@ describe("App auth routes", () => {
     renderApp("/");
 
     expect(await screen.findByRole("heading", { name: "Lease operations" })).toBeInTheDocument();
-    expect((await screen.findAllByText("Marie Tremblay")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Maple Court - Unit 4B")).not.toBeInTheDocument();
+    expect(await screen.findByText("Operational command center")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New lease" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create notice/i })).not.toBeInTheDocument();
+  });
 
-    fireEvent.change(screen.getByLabelText("Recipient"), { target: { value: "New Recipient" } });
-    fireEvent.change(screen.getByLabelText("Contact"), { target: { value: "new@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /create notice/i }));
-
-    await waitFor(() => {
-      expect(fetchImpl).toHaveBeenCalledWith(
-        expect.stringContaining("/api/notices"),
-        expect.objectContaining({ method: "POST" })
-      );
-    });
-
-    const createCall = fetchImpl.mock.calls.find(
-      ([input, init]) => input.toString().endsWith("/api/notices") && init?.method === "POST"
+  it("shows seeded dashboard data only for test users", async () => {
+    window.sessionStorage.setItem("lease-track.auth-token", "workspace-token");
+    window.sessionStorage.setItem(
+      "lease-track.auth-user",
+      JSON.stringify({
+        id: "user-1",
+        displayName: "Test User",
+        email: "test@example.com",
+        role: "LANDLORD"
+      })
     );
-    expect(JSON.parse(createCall?.[1]?.body?.toString() ?? "{}")).toMatchObject({
-      recipientName: "New Recipient",
-      recipientContactInfo: "new@example.com",
-      noticeType: "RENT_INCREASE",
-      deliveryMethod: "REGISTERED_MAIL",
-      leaseId: "lease-1"
-    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (input.toString().endsWith("/api/leases?size=50")) {
+          return jsonResponse(emptyPage());
+        }
+        return jsonResponse({});
+      })
+    );
+
+    renderApp("/");
+
+    expect(await screen.findByText("Maple Court - Unit 4B")).toBeInTheDocument();
+    expect(screen.getByText("148")).toBeInTheDocument();
   });
 });
 
@@ -216,6 +224,19 @@ function jsonResponse(body: unknown, status = 200) {
       "Content-Type": "application/json"
     }
   });
+}
+
+function emptyPage() {
+  return {
+    content: [],
+    totalElements: 0,
+    totalPages: 0,
+    size: 50,
+    number: 0,
+    first: true,
+    last: true,
+    empty: true
+  };
 }
 
 function noticeResponse(id: string, recipientName: string) {
