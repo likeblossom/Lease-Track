@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { ApiError } from "../api/client";
 import type { LoginRequest, RegisterRequest, UserResponse } from "../api/client";
 import { ApiClient } from "../api/client";
 
@@ -38,6 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
     if (user) {
       window.sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      window.sessionStorage.removeItem(USER_STORAGE_KEY);
     }
     setState({ token, user });
   }, []);
@@ -45,8 +48,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (request: LoginRequest) => {
       const response = await api.login(request);
-      const existingUser = readStoredUser();
-      setSession(response.accessToken, existingUser);
+      setSession(response.accessToken, readStoredUser());
+      void api.getCurrentUser()
+        .then((user) => {
+          if (isUserResponse(user)) {
+            setSession(response.accessToken, user);
+          }
+        })
+        .catch(() => {
+          // Login should not block on profile hydration.
+        });
     },
     [api, setSession]
   );
@@ -68,6 +79,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.sessionStorage.removeItem(USER_STORAGE_KEY);
     setState({ token: null, user: null });
   }, []);
+
+  useEffect(() => {
+    if (!state.token) {
+      return;
+    }
+
+    let cancelled = false;
+    api.getCurrentUser()
+      .then((user) => {
+        if (!cancelled && isUserResponse(user)) {
+          setSession(state.token as string, user);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled && state.user && shouldLogoutForAuthError(error)) {
+          logout();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, logout, setSession, state.token]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -104,4 +138,19 @@ function readStoredUser(): UserResponse | null {
     window.sessionStorage.removeItem(USER_STORAGE_KEY);
     return null;
   }
+}
+
+function shouldLogoutForAuthError(error: unknown) {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
+function isUserResponse(value: unknown): value is UserResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<UserResponse>;
+  return typeof candidate.id === "string"
+    && typeof candidate.email === "string"
+    && typeof candidate.displayName === "string"
+    && typeof candidate.role === "string";
 }

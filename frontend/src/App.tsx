@@ -20,6 +20,7 @@ import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useCallback, useEffec
 import {
   ApiError,
   AuditEventResponse,
+  CreateNoticeRequest,
   DeliveryAttemptResponse,
   DeliveryAttemptStatus,
   DeliveryMethod,
@@ -27,16 +28,19 @@ import {
   EvidenceDocumentType,
   EvidencePackageResponse,
   LeaseResponse,
+  LeaseStatus,
   LeaseSummaryResponse,
   NoticeResponse,
   NoticeSummaryResponse,
   NoticeType,
   PropertyResponse,
-  PropertySummaryResponse
+  PropertySummaryResponse,
+  RenewLeaseRequest
 } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 import { AppShell, type WorkspacePage } from "./components/layout/AppShell";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { CreateLeaseFormValue, LeasesPage } from "./features/leases/LeasesPage";
 import { CreatePropertyFormValue, CreateUnitFormValue, PropertiesPage } from "./features/properties/PropertiesPage";
 
 interface TenantNameInput {
@@ -261,6 +265,12 @@ function Workspace() {
     return page.content;
   }, [api]);
 
+  const searchLeases = useCallback(async (query: string, status?: LeaseStatus) => {
+    const page = await api.listLeases({ q: query, status, size: 50 });
+    setLeases(page.content);
+    return page.content;
+  }, [api]);
+
   const refreshProperties = useCallback(async (query?: string) => {
     const page = await api.listProperties({ q: query, size: 50 });
     setProperties(page.content);
@@ -396,6 +406,106 @@ function Workspace() {
     }
   }
 
+  async function onSearchLeases(query: string, status?: LeaseStatus) {
+    setStatus({ kind: "loading", message: "Searching leases..." });
+    try {
+      const nextLeases = await searchLeases(query, status);
+      if (nextLeases[0]) {
+        await loadLease(nextLeases[0].id);
+      } else {
+        setSelectedLease(null);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onRefreshLeases() {
+    setStatus({ kind: "loading", message: "Refreshing leases..." });
+    try {
+      const nextLeases = await refreshLeases();
+      if (selectedLease) {
+        await loadLease(selectedLease.id);
+      } else if (nextLeases[0]) {
+        await loadLease(nextLeases[0].id);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onSelectLease(leaseId: string) {
+    try {
+      await loadLease(leaseId);
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onCreateLeaseRecord(request: CreateLeaseFormValue) {
+    setStatus({ kind: "loading", message: "Creating lease..." });
+    try {
+      const lease = await api.createLease(request);
+      await refreshLeases();
+      await loadLease(lease.id);
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onCreateNoticeRecord(request: CreateNoticeRequest) {
+    setStatus({ kind: "loading", message: "Creating notice..." });
+    try {
+      const notice = await api.createNotice(request);
+      if (request.leaseId) {
+        await loadLease(request.leaseId);
+      }
+      await loadNotice(notice.id);
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onRequestLeaseRenewal(leaseId: string) {
+    setStatus({ kind: "loading", message: "Starting renewal workflow..." });
+    try {
+      const lease = await api.requestLeaseRenewal(leaseId);
+      setSelectedLease(lease);
+      await refreshLeases();
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onRenewLeaseRecord(leaseId: string, request: RenewLeaseRequest) {
+    setStatus({ kind: "loading", message: "Completing renewal..." });
+    try {
+      const lease = await api.renewLease(leaseId, request);
+      setSelectedLease(lease);
+      await refreshLeases();
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onTerminateLeaseRecord(leaseId: string, reason?: string | null) {
+    setStatus({ kind: "loading", message: "Terminating lease..." });
+    try {
+      const lease = await api.terminateLease(leaseId, reason);
+      setSelectedLease(lease);
+      await refreshLeases();
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
   useEffect(() => {
     refreshWorkspace();
     // Run once on authenticated mount; subsequent refreshes are user-driven.
@@ -403,10 +513,10 @@ function Workspace() {
   }, []);
 
   useEffect(() => {
-    if (activePage === "properties" && properties.length === 0) {
+    if ((activePage === "properties" || activePage === "leases") && properties.length === 0) {
       onRefreshProperties();
     }
-    // Load the property module only when its page is visible.
+    // Load property records when a visible module needs property context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage]);
 
@@ -444,6 +554,9 @@ function Workspace() {
         tenantPhone: optionalString(form.get("tenantPhone")),
         leaseStartDate: String(form.get("leaseStartDate") ?? ""),
         leaseEndDate: String(form.get("leaseEndDate") ?? ""),
+        rentCents: 0,
+        securityDepositCents: null,
+        renewalDecisionDueDate: null,
         notes: optionalString(form.get("leaseNotes"))
       });
       formElement.reset();
@@ -613,7 +726,22 @@ function Workspace() {
           onSelectProperty={onSelectProperty}
         />
         ) : null}
-        {activePage !== "dashboard" && activePage !== "properties" ? (
+        {activePage === "leases" ? (
+          <LeasesPage
+            leases={leases}
+            properties={properties}
+            selectedLease={selectedLease}
+            onCreateLease={onCreateLeaseRecord}
+            onCreateNotice={onCreateNoticeRecord}
+            onRefresh={onRefreshLeases}
+            onRequestRenewal={onRequestLeaseRenewal}
+            onRenewLease={onRenewLeaseRecord}
+            onSearch={onSearchLeases}
+            onSelectLease={onSelectLease}
+            onTerminateLease={onTerminateLeaseRecord}
+          />
+        ) : null}
+        {activePage !== "dashboard" && activePage !== "properties" && activePage !== "leases" ? (
           <WorkspacePlaceholder page={activePage} />
         ) : null}
     </AppShell>

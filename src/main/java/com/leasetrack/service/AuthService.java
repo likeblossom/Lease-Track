@@ -75,6 +75,11 @@ public class AuthService {
         return new LoginResponse(jwtService.generateToken(userPrincipal), "Bearer", jwtService.getExpirationSeconds());
     }
 
+    @Transactional(readOnly = true)
+    public UserResponse currentUser() {
+        return toResponse(currentUserService.currentUser());
+    }
+
     @Transactional
     public UserResponse register(RegisterRequest request) {
         String normalizedEmail = normalizeEmail(request.email());

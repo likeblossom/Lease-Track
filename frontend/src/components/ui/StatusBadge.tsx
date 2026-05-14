@@ -1,6 +1,7 @@
-export function StatusBadge({ value, tone }: { value: string; tone?: "neutral" | "good" | "warning" | "danger" }) {
-  const normalizedTone = tone ?? toneForValue(value);
-  return <span className={`status-badge ${normalizedTone}`}>{labelFor(value)}</span>;
+export function StatusBadge({ value, tone }: { value?: string | null; tone?: "neutral" | "good" | "warning" | "danger" }) {
+  const displayValue = value || "UNKNOWN";
+  const normalizedTone = tone ?? toneForValue(displayValue);
+  return <span className={`status-badge ${normalizedTone}`}>{labelFor(displayValue)}</span>;
 }
 
 function toneForValue(value: string) {

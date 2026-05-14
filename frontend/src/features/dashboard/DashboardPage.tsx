@@ -158,7 +158,7 @@ export function DashboardPage({
 }
 
 function isDashboardTestUser(user: UserResponse | null) {
-  const email = user?.email.trim().toLowerCase() ?? "";
+  const email = user?.email?.trim().toLowerCase() ?? "";
   return email === "test@example.com";
 }
 

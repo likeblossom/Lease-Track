@@ -934,18 +934,38 @@ button {
   align-items: start;
 }
 
+.leases-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(0, 1.25fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .property-detail-panel {
   min-height: 520px;
 }
 
+.lease-record-panel {
+  min-height: 620px;
+}
+
 .property-form-grid,
-.unit-form-grid {
+.unit-form-grid,
+.lease-form-grid,
+.renewal-form-grid {
   display: grid;
   gap: 12px;
 }
 
 .property-form-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lease-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .property-list-create-form {
@@ -955,7 +975,9 @@ button {
 }
 
 .property-form-notes,
-.property-form-submit {
+.property-form-submit,
+.lease-form-notes,
+.lease-form-submit {
   grid-column: 1 / -1;
 }
 
@@ -1012,6 +1034,32 @@ button {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.lease-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 16px;
+}
+
+.renewal-form-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 14px;
+  align-items: end;
+}
+
+.lease-notices-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .summary-block {
@@ -1260,9 +1308,14 @@ button {
   .kpi-grid,
   .dashboard-grid,
   .properties-layout,
+  .leases-layout,
   .property-form-grid,
   .property-overview-grid,
-  .unit-form-grid {
+  .lease-overview-grid,
+  .unit-form-grid,
+  .lease-form-grid,
+  .renewal-form-grid,
+  .lease-notices-grid {
     grid-template-columns: 1fr;
   }
 

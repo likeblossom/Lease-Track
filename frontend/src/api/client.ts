@@ -23,6 +23,14 @@ export type EvidenceDocumentType =
   | "OTHER";
 export type EvidenceStrength = "STRONG" | "MEDIUM" | "WEAK";
 export type ActorRole = "LANDLORD" | "PROPERTY_MANAGER" | "TENANT" | "BAILIFF" | "SYSTEM" | "ADMIN";
+export type LeaseStatus = "ACTIVE" | "EXPIRING_SOON" | "PENDING_RENEWAL" | "EXPIRED" | "TERMINATED";
+export type LeaseEventType =
+  | "LEASE_CREATED"
+  | "LEASE_UPDATED"
+  | "RENEWAL_REQUESTED"
+  | "RENEWAL_COMPLETED"
+  | "STATUS_CHANGED"
+  | "LEASE_TERMINATED";
 export type AuditEventType =
   | "NOTICE_CREATED"
   | "DELIVERY_STATUS_UPDATED"
@@ -91,11 +99,27 @@ export interface CreateNoticeRequest {
 export interface CreateLeaseRequest {
   name: string;
   propertyAddress: string;
+  unitId?: string | null;
   tenantNames: string;
   tenantEmail?: string | null;
   tenantPhone?: string | null;
   leaseStartDate: string;
   leaseEndDate: string;
+  rentCents: number;
+  securityDepositCents?: number | null;
+  renewalDecisionDueDate?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateLeaseRequest extends CreateLeaseRequest {
+  status?: LeaseStatus | null;
+}
+
+export interface RenewLeaseRequest {
+  nextStartDate: string;
+  nextEndDate: string;
+  rentCents: number;
+  renewalDecisionDueDate?: string | null;
   notes?: string | null;
 }
 
@@ -179,28 +203,51 @@ export interface LeaseSummaryResponse {
   id: string;
   name: string;
   propertyAddress: string;
+  unitId?: string | null;
+  unitLabel?: string | null;
   tenantNames: string;
   leaseStartDate: string;
   leaseEndDate: string;
+  rentCents: number;
+  status: LeaseStatus;
+  renewalDecisionDueDate?: string | null;
   noticeCount: number;
   openNoticeCount: number;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface LeaseEventResponse {
+  id: string;
+  leaseId: string;
+  eventType: LeaseEventType;
+  actorRole: ActorRole;
+  actorReference: string;
+  details: string;
+  createdAt: string;
+}
+
 export interface LeaseResponse {
   id: string;
   name: string;
   propertyAddress: string;
+  unitId?: string | null;
+  unitLabel?: string | null;
   tenantNames: string;
   tenantEmail?: string | null;
   tenantPhone?: string | null;
   leaseStartDate: string;
   leaseEndDate: string;
+  rentCents: number;
+  securityDepositCents?: number | null;
+  status: LeaseStatus;
+  renewalDecisionDueDate?: string | null;
+  terminatedAt?: string | null;
   ownerUserId: string;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  timeline: LeaseEventResponse[];
   notices: NoticeSummaryResponse[];
 }
 
@@ -393,11 +440,17 @@ export class ApiClient {
     });
   }
 
+  getCurrentUser(): Promise<UserResponse> {
+    return this.request("/api/auth/me");
+  }
+
   getHealth(): Promise<{ status: string; service?: string }> {
     return this.request("/api/health");
   }
 
-  listLeases(params: { page?: number; size?: number; sort?: string } = {}): Promise<PageResponse<LeaseSummaryResponse>> {
+  listLeases(
+    params: { q?: string; status?: LeaseStatus; unitId?: string; page?: number; size?: number; sort?: string } = {}
+  ): Promise<PageResponse<LeaseSummaryResponse>> {
     return this.request(`/api/leases${queryString(params)}`);
   }
 
@@ -433,6 +486,37 @@ export class ApiClient {
 
   getLease(leaseId: string): Promise<LeaseResponse> {
     return this.request(`/api/leases/${encodeURIComponent(leaseId)}`);
+  }
+
+  updateLease(leaseId: string, request: UpdateLeaseRequest): Promise<LeaseResponse> {
+    return this.request(`/api/leases/${encodeURIComponent(leaseId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    });
+  }
+
+  requestLeaseRenewal(leaseId: string): Promise<LeaseResponse> {
+    return this.request(`/api/leases/${encodeURIComponent(leaseId)}/renewal`, {
+      method: "POST"
+    });
+  }
+
+  renewLease(leaseId: string, request: RenewLeaseRequest): Promise<LeaseResponse> {
+    return this.request(`/api/leases/${encodeURIComponent(leaseId)}/renew`, {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  terminateLease(leaseId: string, reason?: string | null): Promise<LeaseResponse> {
+    return this.request(`/api/leases/${encodeURIComponent(leaseId)}/terminate`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null })
+    });
+  }
+
+  getLeaseTimeline(leaseId: string): Promise<LeaseEventResponse[]> {
+    return this.request(`/api/leases/${encodeURIComponent(leaseId)}/timeline`);
   }
 
   listNotices(params: ListNoticesParams = {}): Promise<PageResponse<NoticeSummaryResponse>> {

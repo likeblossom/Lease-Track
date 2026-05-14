@@ -78,6 +78,37 @@ describe("App auth routes", () => {
     );
   });
 
+  it("completes login even if profile hydration fails", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.endsWith("/api/auth/login")) {
+        return jsonResponse({
+          accessToken: "login-token",
+          tokenType: "Bearer",
+          expiresInSeconds: 3600
+        });
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return jsonResponse({ message: "Forbidden" }, 403);
+      }
+      if (url.endsWith("/api/leases?size=50")) {
+        return jsonResponse(emptyPage());
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    renderApp("/");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "avery@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem("lease-track.auth-token")).toBe("login-token");
+    });
+    expect(await screen.findByRole("heading", { name: "Lease operations" })).toBeInTheDocument();
+  });
+
   it("surfaces backend registration errors without bootstrap copy", async () => {
     vi.stubGlobal(
       "fetch",
