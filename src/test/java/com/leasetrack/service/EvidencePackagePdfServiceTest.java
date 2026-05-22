@@ -141,16 +141,26 @@ class EvidencePackagePdfServiceTest {
         assertThat(new String(pdf, 0, 4, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("%PDF");
         try (PDDocument loaded = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(loaded);
-            assertThat(text).contains("Lease-Track Evidence Package");
-            assertThat(text).contains("Package hash: package-hash-123");
+            assertThat(text).contains("Notice Delivery Evidence Report");
+            assertThat(text).contains("Prepared by Lease Track for property management review");
+            assertThat(text).contains("Summary");
+            assertThat(text).contains("Notice Details");
+            assertThat(text).contains("Delivery Attempts");
+            assertThat(text).contains("Uploaded Documents");
+            assertThat(text).contains("Tracking History");
+            assertThat(text).contains("Activity History");
             assertThat(text).contains("Recipient: Marie Tremblay");
-            assertThat(text).contains("Carrier: FedEx (fedex)");
+            assertThat(text).contains("Carrier: FedEx");
             assertThat(text).contains("Tracking number: 123456789012");
             assertThat(text).contains("Delivered");
             assertThat(text).contains("receipt.pdf");
-            assertThat(text).contains("EVIDENCE_PACKAGE_GENERATED");
+            assertThat(text).contains("Evidence Package Generated");
             assertThat(text).contains("Generated");
             assertThat(text).contains("evidence package");
+            assertThat(text).doesNotContain("package-hash-123");
+            assertThat(text).doesNotContain("SHA-256");
+            assertThat(text).doesNotContain("Storage:");
+            assertThat(text).doesNotContain("Package Integrity");
         }
     }
 }

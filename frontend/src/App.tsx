@@ -30,6 +30,7 @@ import {
   LeaseResponse,
   LeaseStatus,
   LeaseSummaryResponse,
+  ListNoticesParams,
   NoticeResponse,
   NoticeSummaryResponse,
   NoticeType,
@@ -41,6 +42,7 @@ import { useAuth } from "./auth/AuthContext";
 import { AppShell, type WorkspacePage } from "./components/layout/AppShell";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { CreateLeaseFormValue, LeasesPage } from "./features/leases/LeasesPage";
+import { NoticesPage } from "./features/notices/NoticesPage";
 import { CreatePropertyFormValue, CreateUnitFormValue, PropertiesPage } from "./features/properties/PropertiesPage";
 
 interface TenantNameInput {
@@ -285,11 +287,11 @@ function Workspace() {
     return property;
   }, [api, setStatus]);
 
-  const refreshNotices = useCallback(async () => {
-    const page = await api.listNotices({ leaseId: selectedLease?.id, size: 50 });
+  const refreshNotices = useCallback(async (params: ListNoticesParams = {}) => {
+    const page = await api.listNotices({ ...params, size: params.size ?? 50 });
     setNotices(page.content);
     return page.content;
-  }, [api, selectedLease?.id]);
+  }, [api]);
 
   const loadNotice = useCallback(
     async (noticeId: string) => {
@@ -463,6 +465,7 @@ function Workspace() {
       if (request.leaseId) {
         await loadLease(request.leaseId);
       }
+      await refreshNotices(activePage === "leases" && request.leaseId ? { leaseId: request.leaseId } : {});
       await loadNotice(notice.id);
       setStatus({ kind: "idle", message: "" });
     } catch (error) {
@@ -517,6 +520,15 @@ function Workspace() {
       onRefreshProperties();
     }
     // Load property records when a visible module needs property context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage]);
+
+  useEffect(() => {
+    if (activePage !== "notices") {
+      return;
+    }
+    onRefreshNotices();
+    // Load unscoped notice records when the standalone notice module becomes visible.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage]);
 
@@ -606,8 +618,9 @@ function Workspace() {
         status: nextStatus
       });
       setSelectedNotice(notice);
-      await refreshNotices();
-      if (selectedLease) {
+      if (activePage === "notices") {
+        await refreshNotices();
+      } else if (selectedLease) {
         await loadLease(selectedLease.id);
       }
       setStatus({ kind: "idle", message: "" });
@@ -695,6 +708,52 @@ function Workspace() {
     }
   }
 
+  async function onSearchNotices(params: ListNoticesParams) {
+    setStatus({ kind: "loading", message: "Searching notices..." });
+    try {
+      const nextNotices = await refreshNotices(params);
+      if (nextNotices[0]) {
+        await loadNotice(nextNotices[0].id);
+      } else {
+        setSelectedNotice(null);
+        setDocuments([]);
+        setAuditEvents([]);
+        setEvidencePackage(null);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onRefreshNotices() {
+    setStatus({ kind: "loading", message: "Refreshing notices..." });
+    try {
+      const nextNotices = await refreshNotices();
+      if (selectedNotice && nextNotices.some((notice) => notice.id === selectedNotice.id)) {
+        await loadNotice(selectedNotice.id);
+      } else if (nextNotices[0]) {
+        await loadNotice(nextNotices[0].id);
+      } else {
+        setSelectedNotice(null);
+        setDocuments([]);
+        setAuditEvents([]);
+        setEvidencePackage(null);
+      }
+      setStatus({ kind: "idle", message: "" });
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
+  async function onSelectNoticeRecord(noticeId: string) {
+    try {
+      await loadNotice(noticeId);
+    } catch (error) {
+      setStatus({ kind: "error", message: errorMessage(error) });
+    }
+  }
+
   return (
     <AppShell
       activePage={activePage}
@@ -741,7 +800,27 @@ function Workspace() {
             onTerminateLease={onTerminateLeaseRecord}
           />
         ) : null}
-        {activePage !== "dashboard" && activePage !== "properties" && activePage !== "leases" ? (
+        {activePage === "notices" ? (
+          <NoticesPage
+            auditEvents={auditEvents}
+            documents={documents}
+            evidencePackage={evidencePackage}
+            leases={leases}
+            notices={notices}
+            selectedAttempt={selectedAttempt}
+            selectedNotice={selectedNotice}
+            onCreateNotice={onCreateNoticeRecord}
+            onDownloadPdf={onDownloadPdf}
+            onGeneratePackage={onGeneratePackage}
+            onRefresh={onRefreshNotices}
+            onSaveEvidence={onSaveEvidence}
+            onSearch={onSearchNotices}
+            onSelectNotice={onSelectNoticeRecord}
+            onUpdateStatus={onUpdateStatus}
+            onUploadDocument={onUploadDocument}
+          />
+        ) : null}
+        {activePage !== "dashboard" && activePage !== "properties" && activePage !== "leases" && activePage !== "notices" ? (
           <WorkspacePlaceholder page={activePage} />
         ) : null}
     </AppShell>

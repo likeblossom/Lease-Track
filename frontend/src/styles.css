@@ -203,6 +203,31 @@ button {
     box-shadow 140ms ease;
 }
 
+.field input[type="file"] {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  line-height: 1.2;
+}
+
+.field input[type="file"]::file-selector-button {
+  min-height: 30px;
+  margin-right: 10px;
+  padding: 0 10px;
+  border: 1px solid #b9c5d2;
+  border-radius: 6px;
+  color: var(--ink);
+  background: #f4f7fa;
+  font: inherit;
+  font-weight: 650;
+}
+
+.field input[type="file"]::file-selector-button:hover {
+  border-color: rgba(29, 111, 115, 0.42);
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
 .field textarea {
   padding-top: 10px;
   resize: vertical;
@@ -804,6 +829,38 @@ button {
   white-space: nowrap;
 }
 
+.notice-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #c7d7df;
+  border-radius: 8px;
+  color: #24424b;
+  background: #edf5f6;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.notice-status-badge.notice-status-open {
+  color: #7a4e00;
+  background: #fff6df;
+  border-color: #efd188;
+}
+
+.notice-status-badge.notice-status-completed {
+  color: #176247;
+  background: #e7f6ef;
+  border-color: #b9e2cf;
+}
+
+.notice-status-badge.notice-status-cancelled {
+  color: var(--danger);
+  background: #fff0ed;
+  border-color: #f3b9b4;
+}
+
 .timeline {
   display: grid;
   gap: 0;
@@ -922,6 +979,25 @@ button {
   background: transparent;
 }
 
+.search-control select {
+  min-height: 32px;
+  max-width: 170px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #ffffff;
+}
+
+.notice-search-control {
+  flex-wrap: wrap;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.notice-search-control input {
+  flex: 1 1 220px;
+}
+
 .compact-action {
   min-height: 40px;
   padding: 0 12px;
@@ -941,11 +1017,19 @@ button {
   align-items: start;
 }
 
+.notices-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 0.96fr) minmax(0, 1.24fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .property-detail-panel {
   min-height: 520px;
 }
 
-.lease-record-panel {
+.lease-record-panel,
+.notice-record-panel {
   min-height: 620px;
 }
 
@@ -968,6 +1052,17 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.notice-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #e0e7ee;
+  border-radius: 8px;
+  background: var(--panel-subtle);
+}
+
 .property-list-create-form {
   margin-bottom: 16px;
   padding-bottom: 16px;
@@ -977,7 +1072,9 @@ button {
 .property-form-notes,
 .property-form-submit,
 .lease-form-notes,
-.lease-form-submit {
+.lease-form-submit,
+.notice-form-notes,
+.notice-form-submit {
   grid-column: 1 / -1;
 }
 
@@ -1005,6 +1102,48 @@ button {
 
 .table-link:hover {
   text-decoration: underline;
+}
+
+.notice-queue-table .data-table td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.notice-primary-cell {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-width: 190px;
+  padding-left: 12px;
+}
+
+.notice-primary-cell::before {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 4px;
+  border-radius: 999px;
+  background: #9fb0bf;
+  content: "";
+}
+
+.notice-primary-cell.notice-status-open::before {
+  background: #d28a00;
+}
+
+.notice-primary-cell.notice-status-completed::before {
+  background: #2e9468;
+}
+
+.notice-primary-cell.notice-status-cancelled::before {
+  background: #d6453a;
+}
+
+.notice-primary-cell span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
 }
 
 .tabs {
@@ -1126,12 +1265,84 @@ button {
   font-size: 1rem;
 }
 
+.notice-record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin: -2px -2px 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-subtle);
+}
+
+.notice-record-header.notice-status-open {
+  border-color: #efd188;
+  background: #fffaf0;
+}
+
+.notice-record-header.notice-status-completed {
+  border-color: #b9e2cf;
+  background: #f2fbf6;
+}
+
+.notice-record-header.notice-status-cancelled {
+  border-color: #f3b9b4;
+  background: #fff7f5;
+}
+
+.notice-record-header .eyebrow {
+  margin: 0 0 6px;
+}
+
+.notice-record-header h2 {
+  margin: 0;
+  font-size: 1.22rem;
+  letter-spacing: 0;
+}
+
+.metric-pending,
+.metric-sent {
+  border-color: #b7d3ef;
+  background: #eff7ff !important;
+}
+
+.metric-delivered,
+.metric-strength-strong {
+  border-color: #b9e2cf;
+  background: #e7f6ef !important;
+}
+
+.metric-failed,
+.metric-cancelled,
+.metric-strength-weak {
+  border-color: #f3b9b4;
+  background: #fff0ed !important;
+}
+
+.metric-strength-medium {
+  border-color: #efd188;
+  background: #fff6df !important;
+}
+
 .action-strip,
 .package-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 18px;
+}
+
+.notice-action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 10px;
+  border: 1px solid #e0e7ee;
+  border-radius: 8px;
+  background: var(--panel-subtle);
 }
 
 .secondary-action {
@@ -1159,9 +1370,117 @@ button {
   padding: 0 10px;
 }
 
+.status-action {
+  min-width: 0;
+  background: #ffffff;
+}
+
+.status-action:disabled,
+.package-actions .secondary-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.status-action-sent {
+  border-color: #b7d3ef;
+  color: #255a8f;
+}
+
+.status-action-sent:hover {
+  background: #eff7ff;
+}
+
+.status-action-delivered {
+  border-color: #b9e2cf;
+  color: #176247;
+}
+
+.status-action-delivered:hover {
+  background: #e7f6ef;
+}
+
+.status-action-failed,
+.status-action-cancelled {
+  border-color: #f3b9b4;
+  color: var(--danger);
+}
+
+.status-action-failed:hover,
+.status-action-cancelled:hover {
+  background: #fff0ed;
+}
+
 .detail-sections {
   display: grid;
   gap: 22px;
+}
+
+.notice-section {
+  padding: 16px;
+  border: 1px solid #e0e7ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.detail-sections .notice-section {
+  padding-top: 16px;
+  border-top: 1px solid #e0e7ee;
+}
+
+.section-heading-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-heading-inline h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.section-heading-inline span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.package-success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #b9e2cf;
+  border-radius: 8px;
+  color: #176247;
+  background: #e7f6ef;
+}
+
+.package-success-banner svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.package-success-banner strong,
+.package-success-banner span {
+  display: block;
+}
+
+.package-success-banner span {
+  margin-top: 2px;
+  color: #2d6f55;
+  font-size: 0.82rem;
+}
+
+.package-empty-state {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel-subtle);
 }
 
 .lease-notice-grid {
@@ -1200,6 +1519,10 @@ button {
 .detail-sections h3 {
   margin-bottom: 12px;
   font-size: 1rem;
+}
+
+.detail-sections .section-heading-inline h3 {
+  margin-bottom: 0;
 }
 
 .upload-form {
@@ -1308,12 +1631,14 @@ button {
   .kpi-grid,
   .dashboard-grid,
   .properties-layout,
+  .notices-layout,
   .leases-layout,
   .property-form-grid,
   .property-overview-grid,
   .lease-overview-grid,
   .unit-form-grid,
   .lease-form-grid,
+  .notice-form-grid,
   .renewal-form-grid,
   .lease-notices-grid {
     grid-template-columns: 1fr;
@@ -1328,6 +1653,11 @@ button {
     width: 100%;
   }
 
+  .search-control select {
+    max-width: none;
+    width: 100%;
+  }
+
   .operations-grid {
     grid-template-columns: 1fr;
   }
@@ -1335,6 +1665,7 @@ button {
   .compact-form.two-column,
   .upload-form,
   .lease-notice-grid,
+  .notice-action-bar,
   .detail-meta,
   .package-summary {
     grid-template-columns: 1fr;

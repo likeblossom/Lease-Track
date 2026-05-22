@@ -257,6 +257,107 @@ describe("App auth routes", () => {
     expect(await screen.findByText("Maple Court - Unit 4B")).toBeInTheDocument();
     expect(screen.getByText("148")).toBeInTheDocument();
   });
+
+  it("runs the standalone notice workspace workflow", async () => {
+    window.sessionStorage.setItem("lease-track.auth-token", "workspace-token");
+    window.sessionStorage.setItem(
+      "lease-track.auth-user",
+      JSON.stringify({
+        id: "user-1",
+        displayName: "Avery Manager",
+        email: "avery@example.com",
+        role: "LANDLORD"
+      })
+    );
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.endsWith("/api/leases?size=50")) {
+        return jsonResponse({
+          ...emptyPage(),
+          content: [leaseSummaryResponse()],
+          totalElements: 1,
+          totalPages: 1,
+          empty: false
+        });
+      }
+      if (url.endsWith("/api/leases/lease-1")) {
+        return jsonResponse(leaseResponse());
+      }
+      if (url.endsWith("/api/notices?size=50")) {
+        return jsonResponse({
+          ...emptyPage(),
+          content: [
+            {
+              id: "notice-1",
+              leaseId: "lease-1",
+              recipientName: "Marie Tremblay",
+              noticeType: "RENT_INCREASE",
+              status: "OPEN",
+              createdAt: "2026-05-12T10:00:00Z",
+              updatedAt: "2026-05-12T10:00:00Z"
+            }
+          ],
+          totalElements: 1,
+          totalPages: 1,
+          empty: false
+        });
+      }
+      if (url.endsWith("/api/notices/notice-1")) {
+        return jsonResponse(noticeResponse("notice-1", "Marie Tremblay"));
+      }
+      if (url.endsWith("/api/notices/notice-2")) {
+        return jsonResponse(noticeResponse("notice-2", "Alex Parker"));
+      }
+      if (url.endsWith("/api/notices/notice-1/evidence-package")) {
+        return jsonResponse(evidencePackageResponse("notice-1"));
+      }
+      if (url.includes("/evidence/documents")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/audit-log")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/notices") && init?.method === "POST") {
+        return jsonResponse(noticeResponse("notice-2", "Alex Parker"), 201);
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    renderApp("/#notices");
+
+    expect(await screen.findByRole("heading", { name: "Notice workflow" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Marie Tremblay" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Marie Tremblay" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate package" }));
+
+    expect(await screen.findByText("Package generated")).toBeInTheDocument();
+    expect(screen.getByText(/Version v1/)).toBeInTheDocument();
+    expect(fetchImpl.mock.calls.some(([input]) => input.toString().includes("/api/notices/notice-1/evidence-package"))).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notice" }));
+    fireEvent.change(screen.getByLabelText("Recipient"), { target: { value: "Alex Parker" } });
+    fireEvent.change(screen.getByLabelText("Contact"), { target: { value: "alex@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /create notice/i }));
+
+    await waitFor(() => {
+      expect(fetchImpl).toHaveBeenCalledWith(
+        expect.stringContaining("/api/notices"),
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    const createCall = fetchImpl.mock.calls.find(
+      ([input, init]) => input.toString().endsWith("/api/notices") && init?.method === "POST"
+    );
+    expect(JSON.parse((createCall?.[1]?.body ?? "{}").toString())).toMatchObject({
+      recipientName: "Alex Parker",
+      recipientContactInfo: "alex@example.com",
+      noticeType: "RENT_INCREASE",
+      deliveryMethod: "REGISTERED_MAIL"
+    });
+    expect(await screen.findByRole("heading", { name: "Alex Parker" })).toBeInTheDocument();
+  });
 });
 
 function renderApp(path: string) {
@@ -320,6 +421,24 @@ function noticeResponse(id: string, recipientName: string) {
         updatedAt: "2026-05-12T10:00:00Z"
       }
     ]
+  };
+}
+
+function evidencePackageResponse(noticeId: string) {
+  return {
+    packageId: "package-1",
+    packageVersion: "v1",
+    packageHash: "abc123def456789",
+    noticeId,
+    generatedByUserId: "user-1",
+    generatedAt: "2026-05-12T10:10:00Z",
+    notice: noticeResponse(noticeId, "Marie Tremblay"),
+    attempts: [],
+    evidence: [],
+    evidenceDocuments: [],
+    trackingHistory: [],
+    auditEvents: [],
+    strongestEvidenceStrength: "WEAK"
   };
 }
 
