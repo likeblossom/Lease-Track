@@ -1,0 +1,97 @@
+# Local/dev PostgreSQL example. In real production, prefer managed PostgreSQL
+# with automated backups, patching, monitoring, and storage lifecycle controls.
+apiVersion: v1
+kind: Service
+metadata:
+  name: lease-track-postgres
+  namespace: lease-track
+  labels:
+    app.kubernetes.io/name: lease-track-postgres
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app.kubernetes.io/name: lease-track-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: lease-track-postgres
+  namespace: lease-track
+  labels:
+    app.kubernetes.io/name: lease-track-postgres
+spec:
+  serviceName: lease-track-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lease-track-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lease-track-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: lease-track-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: lease-track-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lease-track-secrets
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi

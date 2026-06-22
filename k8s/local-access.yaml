@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lease-track-frontend-nodeport
+  namespace: lease-track
+  labels:
+    app.kubernetes.io/name: lease-track-frontend
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30080
+  selector:
+    app.kubernetes.io/name: lease-track-frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lease-track-backend-nodeport
+  namespace: lease-track
+  labels:
+    app.kubernetes.io/name: lease-track-backend
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30081
+  selector:
+    app.kubernetes.io/name: lease-track-backend

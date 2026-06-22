@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lease-track-config
+  namespace: lease-track
+  labels:
+    app.kubernetes.io/name: lease-track
+data:
+  SPRING_PROFILES_ACTIVE: "docker"
+  APP_DB_HOST: "lease-track-postgres"
+  APP_DB_PORT: "5432"
+  APP_DB_NAME: "leasetrack_dev"
+  APP_RABBITMQ_HOST: "lease-track-rabbitmq"
+  APP_RABBITMQ_PORT: "5672"
+  APP_CORS_ALLOWED_ORIGINS: "http://localhost:30080,http://lease-track.local"
+  APP_ACTUATOR_EXPOSED_ENDPOINTS: "health,info"
+  APP_HEALTH_SHOW_DETAILS: "never"
+  APP_STORAGE_PROVIDER: "local"
+  APP_LOCAL_STORAGE_ROOT: "/app/data/evidence-documents"
+  APP_TRACKING_PROVIDER: "mock"
+  APP_DEADLINE_SCHEDULER_DELAY_MS: "3600000"
+  APP_TRACKING_SCHEDULER_DELAY_MS: "3600000"
