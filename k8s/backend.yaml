@@ -50,6 +50,8 @@ spec:
       labels:
         app.kubernetes.io/name: lease-track-backend
     spec:
+      imagePullSecrets:
+        - name: registry-creds
       containers:
         - name: backend
           image: ghcr.io/example/lease-track-backend:latest

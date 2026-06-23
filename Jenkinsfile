@@ -9,6 +9,7 @@ pipeline {
 
   parameters {
     booleanParam(name: 'RUN_DEPLOY', defaultValue: true, description: 'Push images and deploy to Kubernetes when building main.')
+    booleanParam(name: 'APPLY_DEV_DEPENDENCIES', defaultValue: false, description: 'Apply local/dev PostgreSQL and RabbitMQ manifests during deployment.')
     choice(name: 'DEPLOY_ENV', choices: ['dev'], description: 'Target deployment environment.')
   }
 
@@ -126,13 +127,31 @@ pipeline {
             kubectl apply -f k8s/namespace.yaml
             kubectl -n "$KUBE_NAMESPACE" get secret lease-track-secrets
             kubectl apply -f k8s/configmap.yaml
-            kubectl apply -f k8s/postgres.yaml
-            kubectl apply -f k8s/rabbitmq.yaml
+            if [ "$APPLY_DEV_DEPENDENCIES" = "true" ]; then
+              kubectl apply -f k8s/postgres.yaml
+              kubectl apply -f k8s/rabbitmq.yaml
+              kubectl -n "$KUBE_NAMESPACE" rollout status statefulset/lease-track-postgres --timeout=180s
+              kubectl -n "$KUBE_NAMESPACE" rollout status statefulset/lease-track-rabbitmq --timeout=180s
+            fi
             kubectl apply -f k8s/backend.yaml
             kubectl apply -f k8s/frontend.yaml
             kubectl apply -f k8s/local-access.yaml
             kubectl -n "$KUBE_NAMESPACE" set image deployment/lease-track-backend backend="${BACKEND_IMAGE}:${IMAGE_TAG}"
             kubectl -n "$KUBE_NAMESPACE" set image deployment/lease-track-frontend frontend="${FRONTEND_IMAGE}:${IMAGE_TAG}"
+            kubectl -n "$KUBE_NAMESPACE" annotate deployment lease-track-backend \
+              app.leasetrack.io/git-sha="$GIT_SHORT_SHA" \
+              app.leasetrack.io/build-number="$BUILD_NUMBER" \
+              app.leasetrack.io/image-tag="$IMAGE_TAG" \
+              app.leasetrack.io/image="${BACKEND_IMAGE}:${IMAGE_TAG}" \
+              app.leasetrack.io/deploy-env="$DEPLOY_ENV" \
+              --overwrite
+            kubectl -n "$KUBE_NAMESPACE" annotate deployment lease-track-frontend \
+              app.leasetrack.io/git-sha="$GIT_SHORT_SHA" \
+              app.leasetrack.io/build-number="$BUILD_NUMBER" \
+              app.leasetrack.io/image-tag="$IMAGE_TAG" \
+              app.leasetrack.io/image="${FRONTEND_IMAGE}:${IMAGE_TAG}" \
+              app.leasetrack.io/deploy-env="$DEPLOY_ENV" \
+              --overwrite
           '''
         }
       }

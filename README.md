@@ -18,6 +18,8 @@ This project is meant to make lease administration easier to follow and easier t
 - Vite
 - Bun
 - Docker and Docker Compose
+- Kubernetes
+- Jenkins
 - AWS SDK for S3 storage support
 - Apache PDFBox
 - springdoc-openapi for Swagger API documentation
@@ -87,6 +89,17 @@ You can also run the full local stack with Docker:
 ```sh
 docker compose up --build
 ```
+
+## Deployment and CI/CD
+
+Lease Track includes a production-style deployment reference using Docker, Jenkins, and plain Kubernetes manifests.
+
+- Backend and frontend images are built with multi-stage Dockerfiles.
+- Kubernetes manifests under `k8s/` define the backend, frontend, PostgreSQL, RabbitMQ, ConfigMap, Secret template, health probes, resources, and local access services.
+- The root `Jenkinsfile` runs backend/frontend tests, builds Docker images, validates Kubernetes manifests, optionally pushes images, deploys on `main`, verifies rollouts, and annotates deployments with build metadata.
+- PostgreSQL and RabbitMQ manifests are intended for local/dev Kubernetes. A production environment would normally use managed database and messaging services.
+
+See `docs/cicd-kubernetes.md` for local Kubernetes setup, Jenkins credentials, secret creation, deployment commands, rollback commands, and production tradeoffs.
 
 ## Verification
 

@@ -36,6 +36,8 @@ spec:
       labels:
         app.kubernetes.io/name: lease-track-frontend
     spec:
+      imagePullSecrets:
+        - name: registry-creds
       containers:
         - name: frontend
           image: ghcr.io/example/lease-track-frontend:latest
