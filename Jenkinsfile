@@ -7,6 +7,11 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
+  parameters {
+    booleanParam(name: 'RUN_DEPLOY', defaultValue: true, description: 'Push images and deploy to Kubernetes when building main.')
+    choice(name: 'DEPLOY_ENV', choices: ['dev'], description: 'Target deployment environment.')
+  }
+
   environment {
     REGISTRY = 'ghcr.io/example'
     BACKEND_IMAGE = "${REGISTRY}/lease-track-backend"
@@ -72,9 +77,29 @@ pipeline {
       }
     }
 
+    stage('Validate Kubernetes Manifests') {
+      when {
+        allOf {
+          branch 'main'
+          expression { return params.RUN_DEPLOY }
+        }
+      }
+      steps {
+        withCredentials([file(credentialsId: 'kubeconfig-creds', variable: 'KUBECONFIG_FILE')]) {
+          sh '''
+            export KUBECONFIG="$KUBECONFIG_FILE"
+            kubectl apply --dry-run=client -f k8s/
+          '''
+        }
+      }
+    }
+
     stage('Push Docker Images') {
       when {
-        branch 'main'
+        allOf {
+          branch 'main'
+          expression { return params.RUN_DEPLOY }
+        }
       }
       steps {
         withCredentials([usernamePassword(credentialsId: 'docker-registry-creds', usernameVariable: 'REGISTRY_USERNAME', passwordVariable: 'REGISTRY_PASSWORD')]) {
@@ -89,7 +114,10 @@ pipeline {
 
     stage('Deploy to Kubernetes') {
       when {
-        branch 'main'
+        allOf {
+          branch 'main'
+          expression { return params.RUN_DEPLOY }
+        }
       }
       steps {
         withCredentials([file(credentialsId: 'kubeconfig-creds', variable: 'KUBECONFIG_FILE')]) {
@@ -112,7 +140,10 @@ pipeline {
 
     stage('Verify Rollout') {
       when {
-        branch 'main'
+        allOf {
+          branch 'main'
+          expression { return params.RUN_DEPLOY }
+        }
       }
       steps {
         withCredentials([file(credentialsId: 'kubeconfig-creds', variable: 'KUBECONFIG_FILE')]) {
@@ -127,7 +158,10 @@ pipeline {
 
     stage('Lightweight Smoke Checks') {
       when {
-        branch 'main'
+        allOf {
+          branch 'main'
+          expression { return params.RUN_DEPLOY }
+        }
       }
       steps {
         withCredentials([file(credentialsId: 'kubeconfig-creds', variable: 'KUBECONFIG_FILE')]) {
